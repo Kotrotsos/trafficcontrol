@@ -5,311 +5,663 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Traffic Control - Claude CLI Session Monitor</title>
   <meta name="description" content="Real-time dashboard for monitoring all your running Claude Code CLI sessions. Track context usage, CPU, memory, agentboards, and more.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f8f9fa;
-      --surface: #ffffff;
-      --text: #1a1a2e;
-      --text-secondary: #6c757d;
-      --border: #e2e8f0;
-      --accent: #3b82f6;
-      --accent-light: #dbeafe;
-      --green: #10b981;
-      --amber: #f59e0b;
-      --red: #ef4444;
-      --purple: #8b5cf6;
-    }
-    [data-theme="dark"] {
-      --bg: #0f172a;
-      --surface: #1e293b;
-      --text: #e2e8f0;
-      --text-secondary: #94a3b8;
-      --border: #334155;
-      --accent-light: #1e3a5f;
+      --indigo: #4B3BFF;
+      --indigo-dark: #3a2ee6;
+      --yellow: #FFE600;
+      --void: #0A0A0A;
+      --surface: #F5F5F5;
+      --white: #FFFFFF;
+      --text-muted: #71717A;
+      --text-muted-dark: #A1A1AA;
+      --card-dark: #18181B;
+      --card-border: #27272A;
+      --green: #22C55E;
+      --amber: #F59E0B;
+      --red: #EF4444;
+      --radius: 20px;
+      --radius-sm: 12px;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', 'Fira Code', monospace;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.6;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--white);
+      color: var(--void);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
-    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+    .container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
 
     /* Nav */
     nav {
-      padding: 16px 0;
-      border-bottom: 1px solid var(--border);
-      background: var(--surface);
+      padding: 20px 0;
+      background: var(--white);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid #E4E4E7;
     }
     nav .container { display: flex; justify-content: space-between; align-items: center; }
-    nav .logo { font-size: 15px; font-weight: 600; }
-    nav .links { display: flex; gap: 16px; align-items: center; }
-    nav a {
-      color: var(--text-secondary);
-      text-decoration: none;
+    .nav-logo { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; }
+    .nav-logo-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--indigo); }
+    .nav-links { display: flex; gap: 32px; align-items: center; }
+    .nav-links a { color: var(--text-muted); text-decoration: none; font-size: 14px; font-weight: 500; }
+    .nav-links a:hover { color: var(--void); }
+    .nav-cta {
+      background: var(--void);
+      color: var(--white);
+      padding: 10px 22px;
+      border-radius: 50px;
       font-size: 13px;
-    }
-    nav a:hover { color: var(--text); }
-    .theme-btn {
-      background: none; border: 1px solid var(--border); color: var(--text-secondary);
-      cursor: pointer; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-family: inherit;
-    }
-
-    /* Hero */
-    .hero {
-      padding: 80px 0 60px;
-      text-align: center;
-    }
-    .hero h1 {
-      font-size: 36px;
-      font-weight: 700;
-      letter-spacing: -0.03em;
-      margin-bottom: 16px;
-      line-height: 1.2;
-    }
-    .hero p {
-      font-size: 16px;
-      color: var(--text-secondary);
-      max-width: 560px;
-      margin: 0 auto 32px;
-      line-height: 1.7;
-    }
-    .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-    .btn {
-      display: inline-block;
-      padding: 10px 24px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-family: inherit;
-      font-weight: 500;
+      font-weight: 600;
       text-decoration: none;
       border: none;
       cursor: pointer;
+      transition: opacity 0.15s;
     }
-    .btn-primary { background: var(--accent); color: #fff; }
-    .btn-primary:hover { opacity: 0.9; }
-    .btn-secondary {
-      background: none; border: 1px solid var(--border); color: var(--text);
-    }
-    .btn-secondary:hover { background: var(--border); }
+    .nav-cta:hover { opacity: 0.85; }
 
-    /* Install */
-    .install {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 20px 24px;
-      max-width: 480px;
-      margin: 0 auto 80px;
-      font-size: 13px;
+    /* Hero */
+    .hero {
+      background: var(--indigo);
+      padding: 80px 0 0;
+      position: relative;
+      overflow: hidden;
+      border-radius: 0 0 var(--radius) var(--radius);
     }
-    .install-label {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-secondary);
-      margin-bottom: 8px;
+    .hero-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      align-items: start;
     }
-    .install code {
-      display: block;
-      color: var(--text);
-      line-height: 1.8;
+    .hero-text { padding-bottom: 80px; }
+    .hero h1 {
+      font-size: 52px;
+      font-weight: 900;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      color: var(--white);
+      margin-bottom: 24px;
     }
-    .install .cmd { color: var(--accent); }
+    .hero p {
+      font-size: 16px;
+      color: rgba(255,255,255,0.75);
+      max-width: 420px;
+      line-height: 1.7;
+      margin-bottom: 32px;
+    }
+    .hero-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 28px;
+      border-radius: 50px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      border: 1.5px solid rgba(255,255,255,0.3);
+      color: var(--white);
+      transition: all 0.15s;
+    }
+    .hero-cta:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.5); }
 
-    /* Mock dashboard */
-    .mock-section { padding: 0 0 80px; }
-    .mock-section h2 {
+    /* Hero stat card (floating yellow card) */
+    .hero-visual { position: relative; padding-bottom: 40px; }
+    .stat-card {
+      background: var(--yellow);
+      border-radius: var(--radius);
+      padding: 32px;
+      position: relative;
+      box-shadow: 0 24px 48px rgba(0,0,0,0.2);
+    }
+    .stat-card-label {
       font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-secondary);
-      margin-bottom: 16px;
+      font-weight: 600;
+      color: rgba(0,0,0,0.5);
+      margin-bottom: 4px;
+    }
+    .stat-card-number {
+      font-size: 44px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: var(--void);
+      line-height: 1;
+      margin-bottom: 24px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Floating integration bubbles */
+    .bubble {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--white);
+      border-radius: 50px;
+      padding: 8px 16px 8px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      position: absolute;
+      white-space: nowrap;
+    }
+    .bubble-dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--white);
+    }
+    .b1 { top: 160px; left: -20px; }
+    .b2 { top: 200px; right: -10px; }
+    .b3 { bottom: 80px; left: 10px; }
+    .b4 { bottom: 40px; right: 20px; }
+    .b5 { top: 260px; left: 40%; }
+
+    /* Big number stats section */
+    .stats-strip {
+      padding: 64px 0;
+      background: var(--white);
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
       text-align: center;
     }
+    .stat-item {}
+    .stat-number {
+      font-size: 40px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: var(--void);
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-number .accent { color: var(--indigo); }
+    .stat-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-top: 4px;
+    }
+
+    /* Dark section: "Built for Claude. Designed for Humans." */
+    .built-section {
+      background: var(--void);
+      padding: 100px 0;
+      border-radius: var(--radius);
+      margin: 0 16px;
+    }
+    .built-section h2 {
+      font-size: 42px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: var(--white);
+      text-align: center;
+      line-height: 1.15;
+      margin-bottom: 60px;
+    }
+    .built-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    .built-card {
+      background: var(--card-dark);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      padding: 28px 24px;
+      transition: border-color 0.2s;
+    }
+    .built-card:hover { border-color: #3F3F46; }
+    .built-card h3 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: 8px;
+    }
+    .built-card p {
+      font-size: 13px;
+      color: var(--text-muted-dark);
+      line-height: 1.6;
+    }
+    .built-card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--indigo);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--white);
+    }
+    .built-card-icon.yellow { background: var(--yellow); color: var(--void); }
+
+    /* Mock dashboard section */
+    .preview-section {
+      padding: 100px 0 80px;
+    }
+    .preview-section .section-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--indigo);
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    .preview-section h2 {
+      font-size: 36px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      text-align: center;
+      margin-bottom: 48px;
+    }
     .mock {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
+      background: var(--white);
+      border: 1px solid #E4E4E7;
+      border-radius: var(--radius);
       overflow: hidden;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
     }
     .mock-header {
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
+      padding: 14px 20px;
+      border-bottom: 1px solid #E4E4E7;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 13px;
-      font-weight: 600;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .mock-header-controls { display: flex; gap: 8px; }
+    .mock-pill {
+      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 50px;
+      background: var(--surface);
+      color: var(--text-muted);
+      font-weight: 500;
     }
     .mock-stats {
-      padding: 8px 16px;
-      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      border-bottom: 1px solid #E4E4E7;
       display: flex;
-      gap: 16px;
-      font-size: 11px;
-      color: var(--text-secondary);
+      gap: 24px;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 500;
     }
-    .mock-stats b { color: var(--text); font-weight: 600; }
+    .mock-stats b { color: var(--void); font-weight: 700; }
     .mock-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 10px;
-      padding: 14px;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+      padding: 16px;
     }
     .mock-card {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px;
+      border: 1px solid #E4E4E7;
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      background: var(--white);
+      transition: box-shadow 0.15s;
     }
+    .mock-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
     .mock-card-head {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
-    .mock-card-name { font-size: 13px; font-weight: 600; }
+    .mock-card-name { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
     .mock-badge {
-      font-size: 9px; font-weight: 500; padding: 2px 6px; border-radius: 8px;
-      text-transform: uppercase; letter-spacing: 0.03em;
+      font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 50px;
+      text-transform: uppercase; letter-spacing: 0.04em;
     }
-    .mock-active { background: #d1fae5; color: #065f46; }
-    .mock-idle { background: #fef3c7; color: #92400e; }
-    [data-theme="dark"] .mock-active { background: #064e3b; color: #6ee7b7; }
-    [data-theme="dark"] .mock-idle { background: #78350f; color: #fcd34d; }
-    .mock-card-meta { font-size: 10px; color: var(--text-secondary); display: flex; gap: 8px; margin-bottom: 8px; }
+    .mock-active { background: #DCFCE7; color: #166534; }
+    .mock-idle { background: #FEF3C7; color: #92400E; }
+    .mock-card-meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 10px; margin-bottom: 10px; font-variant-numeric: tabular-nums; }
     .mock-bar-row { margin-bottom: 4px; }
-    .mock-bar-head { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-secondary); margin-bottom: 2px; }
-    .mock-bar-head b { color: var(--text); font-weight: 600; }
-    .mock-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
-    .mock-bar-fill { height: 100%; border-radius: 2px; }
-    .fill-cpu { background: var(--accent); }
-    .fill-mem { background: var(--purple); }
-    .fill-ctx-green { background: var(--green); }
-    .fill-ctx-amber { background: var(--amber); }
-    .fill-ctx-red { background: var(--red); }
-    .mock-tags { display: flex; gap: 4px; margin-top: 6px; }
+    .mock-bar-head { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-bottom: 3px; font-weight: 500; }
+    .mock-bar-head b { color: var(--void); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .mock-bar { height: 4px; background: #E4E4E7; border-radius: 4px; overflow: hidden; }
+    .mock-bar-fill { height: 100%; border-radius: 4px; }
+    .fill-green { background: var(--green); }
+    .fill-amber { background: var(--amber); }
+    .fill-red { background: var(--red); }
+    .mock-tags { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
     .mock-tag {
-      font-size: 9px; padding: 1px 5px; border-radius: 3px;
-      background: var(--border); color: var(--text-secondary);
+      font-size: 10px; padding: 3px 8px; border-radius: 50px;
+      background: var(--surface); color: var(--text-muted); font-weight: 500;
     }
-    .mock-tag-board { background: var(--accent-light); color: var(--accent); }
+    .mock-tag-board { background: #EEF2FF; color: var(--indigo); }
 
-    /* Features */
-    .features { padding: 0 0 80px; }
-    .features h2 {
-      font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
-      text-align: center; margin-bottom: 40px;
+    /* How it works - steps */
+    .how-section {
+      padding: 80px 0 100px;
     }
-    .feature-grid {
+    .how-section .section-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--indigo);
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    .how-section h2 {
+      font-size: 36px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .steps {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      grid-template-columns: repeat(5, 1fr);
       gap: 16px;
+      max-width: 960px;
+      margin: 0 auto;
     }
-    .feature {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 20px;
-    }
-    .feature h3 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-    .feature p { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
-
-    /* How it works */
-    .how { padding: 0 0 80px; }
-    .how h2 {
-      font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
-      text-align: center; margin-bottom: 40px;
-    }
-    .steps { display: flex; flex-direction: column; gap: 12px; max-width: 600px; margin: 0 auto; }
     .step {
-      display: flex; gap: 14px; align-items: flex-start;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 16px 20px;
+      text-align: center;
+      position: relative;
     }
     .step-num {
-      font-size: 12px; font-weight: 700; color: var(--accent);
-      background: var(--accent-light);
-      width: 28px; height: 28px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--indigo);
+      color: var(--white);
+      font-size: 15px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 14px;
     }
-    .step-text h4 { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
-    .step-text p { font-size: 12px; color: var(--text-secondary); }
+    .step h4 { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+    .step p { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+    /* Install */
+    .install-section {
+      background: var(--void);
+      padding: 80px 0;
+      border-radius: var(--radius);
+      margin: 0 16px 80px;
+      text-align: center;
+    }
+    .install-section h2 {
+      font-size: 36px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: var(--white);
+      margin-bottom: 12px;
+    }
+    .install-section p {
+      font-size: 14px;
+      color: var(--text-muted-dark);
+      margin-bottom: 32px;
+    }
+    .install-box {
+      background: var(--card-dark);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      padding: 24px 32px;
+      display: inline-block;
+      text-align: left;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 13px;
+      line-height: 2;
+      color: var(--white);
+    }
+    .install-box .cmd { color: var(--yellow); font-weight: 600; }
+    .install-box .comment { color: #52525B; }
+    .install-actions {
+      margin-top: 32px;
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+    .btn-indigo {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 32px;
+      border-radius: 50px;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      background: var(--indigo);
+      color: var(--white);
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn-indigo:hover { opacity: 0.9; }
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 32px;
+      border-radius: 50px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      background: none;
+      color: var(--white);
+      border: 1.5px solid #3F3F46;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-ghost:hover { border-color: #71717A; }
 
     /* Footer */
     footer {
-      border-top: 1px solid var(--border);
-      padding: 24px 0;
+      padding: 32px 0;
       text-align: center;
-      font-size: 12px;
-      color: var(--text-secondary);
+      font-size: 13px;
+      color: var(--text-muted);
+      border-top: 1px solid #E4E4E7;
     }
-    footer a { color: var(--text-secondary); text-decoration: none; }
-    footer a:hover { color: var(--text); }
+    footer a { color: var(--text-muted); text-decoration: none; font-weight: 500; }
+    footer a:hover { color: var(--void); }
 
-    @media (max-width: 600px) {
-      .hero h1 { font-size: 26px; }
-      .hero { padding: 48px 0 40px; }
+    /* Theme toggle */
+    [data-theme="dark"] body { background: var(--void); color: var(--white); }
+    [data-theme="dark"] nav { background: var(--void); border-color: var(--card-border); }
+    [data-theme="dark"] .nav-links a { color: var(--text-muted-dark); }
+    [data-theme="dark"] .nav-links a:hover { color: var(--white); }
+    [data-theme="dark"] .nav-cta { background: var(--white); color: var(--void); }
+    [data-theme="dark"] .stats-strip { background: var(--void); }
+    [data-theme="dark"] .stat-number { color: var(--white); }
+    [data-theme="dark"] .preview-section h2 { color: var(--white); }
+    [data-theme="dark"] .how-section h2 { color: var(--white); }
+    [data-theme="dark"] .mock { background: var(--card-dark); border-color: var(--card-border); }
+    [data-theme="dark"] .mock-header { border-color: var(--card-border); }
+    [data-theme="dark"] .mock-stats { border-color: var(--card-border); color: var(--text-muted-dark); }
+    [data-theme="dark"] .mock-stats b { color: var(--white); }
+    [data-theme="dark"] .mock-card { background: #111113; border-color: var(--card-border); }
+    [data-theme="dark"] .mock-card-name { color: var(--white); }
+    [data-theme="dark"] .mock-card-meta { color: var(--text-muted-dark); }
+    [data-theme="dark"] .mock-bar-head { color: var(--text-muted-dark); }
+    [data-theme="dark"] .mock-bar-head b { color: var(--white); }
+    [data-theme="dark"] .mock-bar { background: var(--card-border); }
+    [data-theme="dark"] .mock-pill { background: #27272A; color: var(--text-muted-dark); }
+    [data-theme="dark"] .mock-active { background: #064E3B; color: #6EE7B7; }
+    [data-theme="dark"] .mock-idle { background: #78350F; color: #FCD34D; }
+    [data-theme="dark"] .mock-tag { background: #27272A; color: var(--text-muted-dark); }
+    [data-theme="dark"] .mock-tag-board { background: #312E81; color: #A5B4FC; }
+    [data-theme="dark"] .step p { color: var(--text-muted-dark); }
+    [data-theme="dark"] footer { border-color: var(--card-border); color: var(--text-muted-dark); }
+    [data-theme="dark"] footer a { color: var(--text-muted-dark); }
+    [data-theme="dark"] footer a:hover { color: var(--white); }
+
+    .theme-btn {
+      background: none; border: 1px solid #E4E4E7; color: var(--text-muted);
+      cursor: pointer; padding: 6px 12px; border-radius: 50px; font-size: 11px;
+      font-family: inherit; font-weight: 500;
+    }
+    [data-theme="dark"] .theme-btn { border-color: var(--card-border); color: var(--text-muted-dark); }
+
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 34px; }
+      .hero-inner { grid-template-columns: 1fr; }
+      .hero-visual { display: none; }
+      .hero-text { padding-bottom: 60px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 32px; }
+      .stat-number { font-size: 28px; }
+      .built-section h2 { font-size: 28px; }
+      .built-grid { grid-template-columns: 1fr; }
+      .built-section { margin: 0 8px; padding: 60px 0; }
       .mock-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; gap: 24px; }
+      .preview-section h2, .how-section h2 { font-size: 28px; }
+      .install-section { margin: 0 8px 60px; padding: 60px 16px; }
+      .install-section h2 { font-size: 28px; }
+      .install-box { font-size: 11px; padding: 16px 20px; }
+      .install-actions { flex-direction: column; align-items: center; }
     }
   </style>
 </head>
 <body>
+
   <nav>
     <div class="container">
-      <span class="logo">Traffic Control</span>
-      <div class="links">
+      <span class="nav-logo"><span class="nav-logo-dot"></span> Traffic Control</span>
+      <div class="nav-links">
         <a href="#features">Features</a>
-        <a href="#how">How it works</a>
+        <a href="#how">How It Works</a>
         <a href="https://github.com/Kotrotsos/trafficcontrol">GitHub</a>
         <button class="theme-btn" onclick="toggleTheme()">light / dark</button>
+        <a href="https://github.com/Kotrotsos/trafficcontrol" class="nav-cta">Get Started</a>
       </div>
     </div>
   </nav>
 
+  <!-- Hero: Indigo background, floating yellow stat card -->
   <section class="hero">
     <div class="container">
-      <h1>Monitor all your Claude sessions<br>in one dashboard</h1>
-      <p>Traffic Control gives you a real-time view of every Claude Code CLI session running on your machine. Track context usage, resource consumption, agentboard tasks, and git status at a glance.</p>
-      <div class="hero-actions">
-        <a href="https://github.com/Kotrotsos/trafficcontrol" class="btn btn-primary">View on GitHub</a>
-        <a href="#install" class="btn btn-secondary">Install</a>
+      <div class="hero-inner">
+        <div class="hero-text">
+          <h1>Own Your Sessions. See Everything.</h1>
+          <p>A real-time dashboard for every Claude Code CLI session running on your machine. Context usage, resources, agentboards, git status, all in one view.</p>
+          <a href="#install" class="hero-cta">Get Started</a>
+        </div>
+        <div class="hero-visual">
+          <div class="stat-card">
+            <div class="stat-card-label">Active Sessions Monitored</div>
+            <div class="stat-card-number">11</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <span style="font-size:12px;font-weight:600;background:var(--void);color:var(--white);padding:6px 14px;border-radius:50px;">Context Tracking</span>
+              <span style="font-size:12px;font-weight:600;background:var(--void);color:var(--white);padding:6px 14px;border-radius:50px;">Git Status</span>
+              <span style="font-size:12px;font-weight:600;background:var(--void);color:var(--white);padding:6px 14px;border-radius:50px;">Agentboard</span>
+              <span style="font-size:12px;font-weight:600;background:var(--void);color:var(--white);padding:6px 14px;border-radius:50px;">CPU / MEM</span>
+            </div>
+          </div>
+          <div class="bubble b1"><span class="bubble-dot" style="background:var(--indigo)">ps</span> Process Scan</div>
+          <div class="bubble b2"><span class="bubble-dot" style="background:var(--green)">ws</span> WebSocket Push</div>
+          <div class="bubble b3"><span class="bubble-dot" style="background:var(--amber)">lsof</span> Project Resolve</div>
+          <div class="bubble b4"><span class="bubble-dot" style="background:#8B5CF6">ctx</span> Token Usage</div>
+        </div>
       </div>
     </div>
   </section>
 
-  <div class="container" id="install">
-    <div class="install">
-      <div class="install-label">Quick start</div>
-      <code>
-        <span class="cmd">git clone</span> https://github.com/Kotrotsos/trafficcontrol.git<br>
-        <span class="cmd">cd</span> trafficcontrol<br>
-        <span class="cmd">bun install</span><br>
-        <span class="cmd">bun start</span><br>
-        <br>
-        <span style="color:var(--text-secondary)"># open http://localhost:3847</span>
-      </code>
-    </div>
-  </div>
-
-  <section class="mock-section">
+  <!-- Stats strip -->
+  <section class="stats-strip">
     <div class="container">
-      <h2>Live preview</h2>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-number"><span class="accent">2</span>s</div>
+          <div class="stat-label">Update interval</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number"><span class="accent">200</span>k</div>
+          <div class="stat-label">Context window tracked</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number"><span class="accent">0</span></div>
+          <div class="stat-label">Dependencies required</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number"><span class="accent">1</span></div>
+          <div class="stat-label">Command to start</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Built for Claude. Designed for Humans. -->
+  <section class="built-section" id="features">
+    <h2>Built for Claude.<br>Designed for Humans.</h2>
+    <div class="built-grid">
+      <div class="built-card">
+        <div class="built-card-icon">rt</div>
+        <h3>Real-time Monitoring</h3>
+        <p>WebSocket-powered updates every 2 seconds. CPU, memory, uptime, and active/idle status for every session without refreshing.</p>
+      </div>
+      <div class="built-card">
+        <div class="built-card-icon yellow">ctx</div>
+        <h3>Context Window Tracking</h3>
+        <p>Progress bar showing token usage against the 200k window. Green, amber, and red thresholds so you know when sessions run hot.</p>
+      </div>
+      <div class="built-card">
+        <div class="built-card-icon">ab</div>
+        <h3>Agentboard Integration</h3>
+        <p>Projects with .agentboard show a full kanban view in the detail panel. Backlog, todo, in-progress, and done columns.</p>
+      </div>
+      <div class="built-card">
+        <div class="built-card-icon yellow">git</div>
+        <h3>Git Status at a Glance</h3>
+        <p>Current branch, last commit, dirty file count, and remote URL for each project without switching terminals.</p>
+      </div>
+      <div class="built-card">
+        <div class="built-card-icon">det</div>
+        <h3>Expandable Detail Panel</h3>
+        <p>Click any card for a resizable split-screen with tabs: overview, git, agentboard, package.json, and CLAUDE.md.</p>
+      </div>
+      <div class="built-card">
+        <div class="built-card-icon yellow">shr</div>
+        <h3>Remote Sharing</h3>
+        <p>Share individual sessions to a remote board via GUID. Optional PIN protection. Anyone with the link can view your flights.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Dashboard preview -->
+  <section class="preview-section">
+    <div class="container">
+      <div class="section-label">Live Preview</div>
+      <h2>Your Command Center</h2>
       <div class="mock">
         <div class="mock-header">
           <span>Traffic Control</span>
-          <span style="font-size:11px;color:var(--text-secondary);font-weight:400">sort: auto &nbsp; light / dark / system</span>
+          <div class="mock-header-controls">
+            <span class="mock-pill">sort: auto</span>
+            <span class="mock-pill">light / dark</span>
+            <span class="mock-pill">settings</span>
+          </div>
         </div>
         <div class="mock-stats">
           <span>Sessions: <b>6</b></span>
           <span>Active: <b>3</b></span>
           <span>Total CPU: <b>48.2%</b></span>
           <span>Total MEM: <b>8.4%</b></span>
+          <span>Last update: <b>16:24:31</b></span>
         </div>
         <div class="mock-grid">
           <div class="mock-card">
@@ -322,7 +674,7 @@
             </div>
             <div class="mock-bar-row">
               <div class="mock-bar-head"><span>CONTEXT</span><b>128k / 200k (64%)</b></div>
-              <div class="mock-bar"><div class="mock-bar-fill fill-ctx-amber" style="width:64%"></div></div>
+              <div class="mock-bar"><div class="mock-bar-fill fill-amber" style="width:64%"></div></div>
             </div>
             <div class="mock-tags">
               <span class="mock-tag">resumed</span>
@@ -341,7 +693,7 @@
             </div>
             <div class="mock-bar-row">
               <div class="mock-bar-head"><span>CONTEXT</span><b>156k / 200k (78%)</b></div>
-              <div class="mock-bar"><div class="mock-bar-fill fill-ctx-amber" style="width:78%"></div></div>
+              <div class="mock-bar"><div class="mock-bar-fill fill-amber" style="width:78%"></div></div>
             </div>
             <div class="mock-tags">
               <span class="mock-tag">skip-perms</span>
@@ -358,7 +710,7 @@
             </div>
             <div class="mock-bar-row">
               <div class="mock-bar-head"><span>CONTEXT</span><b>85k / 200k (43%)</b></div>
-              <div class="mock-bar"><div class="mock-bar-fill fill-ctx-green" style="width:43%"></div></div>
+              <div class="mock-bar"><div class="mock-bar-fill fill-green" style="width:43%"></div></div>
             </div>
             <div class="mock-tags">
               <span class="mock-tag">skip-perms</span>
@@ -375,7 +727,7 @@
             </div>
             <div class="mock-bar-row">
               <div class="mock-bar-head"><span>CONTEXT</span><b>42k / 200k (21%)</b></div>
-              <div class="mock-bar"><div class="mock-bar-fill fill-ctx-green" style="width:21%"></div></div>
+              <div class="mock-bar"><div class="mock-bar-fill fill-green" style="width:21%"></div></div>
             </div>
             <div class="mock-tags">
               <span class="mock-tag">resumed</span>
@@ -392,7 +744,7 @@
             </div>
             <div class="mock-bar-row">
               <div class="mock-bar-head"><span>CONTEXT</span><b>172k / 200k (86%)</b></div>
-              <div class="mock-bar"><div class="mock-bar-fill fill-ctx-red" style="width:86%"></div></div>
+              <div class="mock-bar"><div class="mock-bar-fill fill-red" style="width:86%"></div></div>
             </div>
             <div class="mock-tags">
               <span class="mock-tag">resumed</span>
@@ -409,7 +761,7 @@
             </div>
             <div class="mock-bar-row">
               <div class="mock-bar-head"><span>CONTEXT</span><b>31k / 200k (16%)</b></div>
-              <div class="mock-bar"><div class="mock-bar-fill fill-ctx-green" style="width:16%"></div></div>
+              <div class="mock-bar"><div class="mock-bar-fill fill-green" style="width:16%"></div></div>
             </div>
             <div class="mock-tags">
               <span class="mock-tag">resumed</span>
@@ -421,85 +773,62 @@
     </div>
   </section>
 
-  <section class="features" id="features">
+  <!-- How it works -->
+  <section class="how-section" id="how">
     <div class="container">
-      <h2>Features</h2>
-      <div class="feature-grid">
-        <div class="feature">
-          <h3>Real-time monitoring</h3>
-          <p>WebSocket-powered updates every 2 seconds. See CPU, memory, uptime, and active/idle status for every Claude session without refreshing.</p>
+      <div class="section-label">Under the Hood</div>
+      <h2>5 Steps to Full Visibility</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h4>Process Scan</h4>
+          <p>Parses ps aux to find all running claude CLI processes.</p>
         </div>
-        <div class="feature">
-          <h3>Context window tracking</h3>
-          <p>Each card shows a progress bar of context token usage against the 200k window. Green, amber, and red thresholds so you know when a session is running hot.</p>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h4>Project Resolve</h4>
+          <p>Uses lsof to map each process to its working directory.</p>
         </div>
-        <div class="feature">
-          <h3>Agentboard integration</h3>
-          <p>Projects with an .agentboard folder show a full kanban view in the detail panel with backlog, todo, in-progress, and done columns.</p>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h4>Context Read</h4>
+          <p>Extracts token usage from .claude session files.</p>
         </div>
-        <div class="feature">
-          <h3>Git status at a glance</h3>
-          <p>See the current branch, last commit, dirty file count, and remote URL for each project without switching terminals.</p>
+        <div class="step">
+          <div class="step-num">4</div>
+          <h4>Enrich</h4>
+          <p>Fetches git, package, CLAUDE.md, and agentboard data.</p>
         </div>
-        <div class="feature">
-          <h3>Expandable detail panel</h3>
-          <p>Click any card to open a resizable split-screen with tabs for overview, git, agentboard, package.json, and CLAUDE.md configuration.</p>
-        </div>
-        <div class="feature">
-          <h3>Sort lock</h3>
-          <p>Lock the card order so sessions stop jumping around when CPU fluctuates. New sessions appear at the end. State persists across page reloads.</p>
+        <div class="step">
+          <div class="step-num">5</div>
+          <h4>Broadcast</h4>
+          <p>WebSocket pushes data to all browsers every 2 seconds.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="how" id="how">
-    <div class="container">
-      <h2>How it works</h2>
-      <div class="steps">
-        <div class="step">
-          <div class="step-num">1</div>
-          <div class="step-text">
-            <h4>Process discovery</h4>
-            <p>Parses <code>ps aux</code> to find all running <code>claude</code> CLI processes on your machine.</p>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">2</div>
-          <div class="step-text">
-            <h4>Project resolution</h4>
-            <p>Uses <code>lsof</code> to inspect each process's open files and infer the project working directory.</p>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">3</div>
-          <div class="step-text">
-            <h4>Context tracking</h4>
-            <p>Reads the latest assistant message from <code>.claude/projects/</code> session files to extract token usage data.</p>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">4</div>
-          <div class="step-text">
-            <h4>Enrichment</h4>
-            <p>On card click, fetches git info, package.json, CLAUDE.md, and agentboard data from the project directory.</p>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num">5</div>
-          <div class="step-text">
-            <h4>Live broadcast</h4>
-            <p>Bun's built-in WebSocket server pushes session data to all connected browsers every 2 seconds.</p>
-          </div>
-        </div>
-      </div>
+  <!-- Install -->
+  <section class="install-section" id="install">
+    <h2>Start in 30 Seconds</h2>
+    <p>Requires Bun v1.0+ and macOS.</p>
+    <div class="install-box">
+      <span class="cmd">git clone</span> https://github.com/Kotrotsos/trafficcontrol.git<br>
+      <span class="cmd">cd</span> trafficcontrol<br>
+      <span class="cmd">bun install</span><br>
+      <span class="cmd">bun start</span><br>
+      <br>
+      <span class="comment"># open http://localhost:3847</span>
+    </div>
+    <div class="install-actions">
+      <a href="https://github.com/Kotrotsos/trafficcontrol" class="btn-indigo">View on GitHub</a>
+      <a href="https://trafficcontrol-production.up.railway.app" class="btn-ghost">Live Demo</a>
     </div>
   </section>
 
   <footer>
     <div class="container">
-      <p>Traffic Control is a local-only tool for macOS. Requires <a href="https://bun.sh">Bun</a> v1.0+.</p>
-      <p style="margin-top:6px"><a href="https://github.com/Kotrotsos/trafficcontrol">GitHub</a> &middot; MIT License</p>
+      <p>Traffic Control. Local-first monitoring for Claude Code. <a href="https://github.com/Kotrotsos/trafficcontrol">GitHub</a> / MIT License</p>
     </div>
   </footer>
 

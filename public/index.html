@@ -291,6 +291,19 @@
     .toast.show { opacity: 1; }
     .toast.error { border-color: #ef4444; }
     .board-url { font-size: 11px; color: var(--accent); word-break: break-all; }
+    .share-result { margin-top: 12px; padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+    .share-result-label { font-size: 10px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 6px; letter-spacing: 0.05em; }
+    .share-result-url {
+      font-size: 12px; color: var(--accent); word-break: break-all;
+      padding: 8px 10px; background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    }
+    .share-result-url span { flex: 1; }
+    .copy-btn {
+      font-size: 10px; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border);
+      background: var(--bg); color: var(--text); cursor: pointer; font-family: inherit; white-space: nowrap;
+    }
+    .copy-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -342,6 +355,27 @@
     </div>
   </div>
 
+  <!-- Share Result Modal -->
+  <div class="modal-overlay" id="shareModal">
+    <div class="modal">
+      <h3>Flight Shared</h3>
+      <p style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">
+        This session is now live on your remote board. Anyone with the link can view it.
+      </p>
+      <div class="share-result">
+        <div class="share-result-label">Board URL</div>
+        <div class="share-result-url">
+          <span id="shareUrlText"></span>
+          <button class="copy-btn" onclick="copyShareUrl()">copy</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn" onclick="closeShareModal()">Close</button>
+        <button class="modal-btn primary" onclick="openShareUrl()">Open Board</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 
@@ -359,7 +393,7 @@
 
     // Load config and shared state
     fetch('/api/config').then(r => r.json()).then(c => { localConfig = c; }).catch(() => {});
-    fetch('/api/shared').then(r => r.json()).then(s => { sharedPids = s; }).catch(() => {});
+    fetch('/api/shared').then(r => r.json()).then(s => { sharedPids = s; render(); }).catch(() => {});
 
     applyTheme();
     updateLockButton();
@@ -438,12 +472,26 @@
         el('span', { className: 'status-badge status-' + s.status }, s.status)
       );
 
-      // Share button
-      const shareBtn = el('button', {
-        className: 'share-btn' + (isShared ? ' shared' : ''),
-        onclick: (e) => { e.stopPropagation(); toggleShare(s.pid); }
-      }, isShared ? 'shared' : 'share');
-      headerActions.insertBefore(shareBtn, headerActions.firstChild);
+      // Share / unshare buttons
+      if (isShared) {
+        const viewBtn = el('button', {
+          className: 'share-btn shared',
+          onclick: (e) => { e.stopPropagation(); showBoardUrl(); }
+        }, 'shared');
+        const unshareBtn = el('button', {
+          className: 'share-btn',
+          style_background: '#ef4444',
+          onclick: (e) => { e.stopPropagation(); toggleShare(s.pid); }
+        }, 'stop');
+        headerActions.insertBefore(unshareBtn, headerActions.firstChild);
+        headerActions.insertBefore(viewBtn, headerActions.firstChild);
+      } else {
+        const shareBtn = el('button', {
+          className: 'share-btn',
+          onclick: (e) => { e.stopPropagation(); toggleShare(s.pid); }
+        }, 'share');
+        headerActions.insertBefore(shareBtn, headerActions.firstChild);
+      }
 
       const card = el('div', {
         className: 'card' + (isSelected ? ' selected' : ''),
@@ -826,10 +874,13 @@
       );
     }
 
+    let lastShareUrl = '';
+
     // Share / Settings / Toast
     async function toggleShare(pid) {
       if (!localConfig.remoteUrl) {
-        showToast('Set a remote URL in settings first', true);
+        openSettings();
+        showToast('Set a remote URL first, then share', true);
         return;
       }
       if (sharedPids[pid]) {
@@ -857,12 +908,40 @@
             return;
           }
           sharedPids[pid] = data.flightId;
-          showToast('Shared! Board: ' + data.url);
+          lastShareUrl = data.url;
+          showShareModal(data.url);
         } catch (e) {
           showToast('Failed to share: ' + e, true);
         }
       }
       render();
+    }
+
+    function showShareModal(url) {
+      lastShareUrl = url;
+      document.getElementById('shareUrlText').textContent = url;
+      document.getElementById('shareModal').classList.add('open');
+    }
+
+    function closeShareModal() {
+      document.getElementById('shareModal').classList.remove('open');
+    }
+
+    function copyShareUrl() {
+      navigator.clipboard.writeText(lastShareUrl).then(() => {
+        showToast('URL copied to clipboard');
+      });
+    }
+
+    function openShareUrl() {
+      window.open(lastShareUrl, '_blank');
+      closeShareModal();
+    }
+
+    function showBoardUrl() {
+      if (localConfig.remoteUrl && localConfig.boardGuid) {
+        showShareModal(localConfig.remoteUrl + '/b/' + localConfig.boardGuid);
+      }
     }
 
     function openSettings() {
