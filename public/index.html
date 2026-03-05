@@ -76,7 +76,21 @@
 
     /* Main layout: split view */
     .main { display: flex; flex: 1; overflow: hidden; }
-    .cards-panel { flex: 1; overflow-y: auto; padding: 16px 20px; min-width: 0; }
+    .cards-panel { flex: 1; overflow-y: auto; padding: 16px 20px; min-width: 200px; }
+    .resize-handle {
+      width: 5px;
+      cursor: col-resize;
+      background: transparent;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 10;
+      display: none;
+    }
+    .resize-handle:hover, .resize-handle.dragging {
+      background: var(--accent);
+      opacity: 0.4;
+    }
+    .resize-handle.visible { display: block; }
     .detail-panel {
       width: 0;
       overflow: hidden;
@@ -86,8 +100,10 @@
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
+      min-width: 0;
     }
-    .detail-panel.open { width: 520px; }
+    .detail-panel.open { width: 520px; min-width: 300px; max-width: 80vw; }
+    .detail-panel.resizing { transition: none; }
 
     .grid {
       display: grid;
@@ -250,6 +266,7 @@
   </div>
   <div class="main">
     <div class="cards-panel" id="cardsPanel"></div>
+    <div class="resize-handle" id="resizeHandle"></div>
     <div class="detail-panel" id="detailPanel">
       <div class="detail-header">
         <h2 id="detailTitle">Project</h2>
@@ -444,7 +461,10 @@
       detailData = null;
       activeTab = 'overview';
 
-      document.getElementById('detailPanel').classList.add('open');
+      const detailEl = document.getElementById('detailPanel');
+      detailEl.classList.add('open');
+      detailEl.classList.remove('resizing');
+      document.getElementById('resizeHandle').classList.add('visible');
       document.getElementById('detailTitle').textContent = s.projectShort;
       renderTabs(s);
       renderTabContent(s);
@@ -466,7 +486,10 @@
     function closeDetail() {
       selectedPid = null;
       detailData = null;
-      document.getElementById('detailPanel').classList.remove('open');
+      const detailEl = document.getElementById('detailPanel');
+      detailEl.classList.remove('open', 'resizing');
+      detailEl.style.width = '';
+      document.getElementById('resizeHandle').classList.remove('visible');
       render();
     }
 
@@ -715,6 +738,39 @@
         )
       );
     }
+
+    // Resize handle drag logic
+    (function() {
+      const handle = document.getElementById('resizeHandle');
+      const detail = document.getElementById('detailPanel');
+      const main = document.querySelector('.main');
+      let dragging = false;
+
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        dragging = true;
+        detail.classList.add('resizing');
+        handle.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const mainRect = main.getBoundingClientRect();
+        const newWidth = mainRect.right - e.clientX;
+        const clamped = Math.max(300, Math.min(newWidth, mainRect.width * 0.8));
+        detail.style.width = clamped + 'px';
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        handle.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      });
+    })();
 
     connect();
   </script>
