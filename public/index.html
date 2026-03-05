@@ -16,8 +16,8 @@
       --accent: #3b82f6;
       --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
       --shadow-hover: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
+      --panel-bg: #ffffff;
     }
-
     [data-theme="dark"] {
       --bg: #0f172a;
       --card-bg: #1e293b;
@@ -26,267 +26,207 @@
       --border: #334155;
       --shadow: 0 1px 3px rgba(0,0,0,0.3);
       --shadow-hover: 0 4px 6px rgba(0,0,0,0.4);
+      --panel-bg: #1e293b;
     }
-
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
-
     .header {
-      padding: 24px 32px;
+      padding: 16px 24px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       border-bottom: 1px solid var(--border);
       background: var(--card-bg);
+      flex-shrink: 0;
     }
-
-    .header h1 {
-      font-size: 18px;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-    }
-
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .connection-status {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-
-    .connection-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #ef4444;
-    }
-
-    .connection-dot.connected {
-      background: var(--active);
-    }
-
-    .theme-toggle, .lock-toggle {
+    .header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .connection-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+    .connection-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; }
+    .connection-dot.connected { background: var(--active); }
+    .hdr-btn {
       background: none;
       border: 1px solid var(--border);
       color: var(--text);
       cursor: pointer;
-      padding: 6px 10px;
+      padding: 5px 10px;
       border-radius: 6px;
-      font-size: 12px;
+      font-size: 11px;
       font-family: inherit;
     }
-
-    .lock-toggle.locked {
-      background: var(--accent);
-      color: #fff;
-      border-color: var(--accent);
-    }
-
+    .hdr-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .stats-bar {
-      padding: 12px 32px;
+      padding: 8px 24px;
       display: flex;
-      gap: 24px;
-      font-size: 12px;
+      gap: 20px;
+      font-size: 11px;
       color: var(--text-secondary);
       border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
+    .stat { display: flex; align-items: center; gap: 5px; }
+    .stat-value { font-weight: 600; color: var(--text); }
 
-    .stat {
+    /* Main layout: split view */
+    .main { display: flex; flex: 1; overflow: hidden; }
+    .cards-panel { flex: 1; overflow-y: auto; padding: 16px 20px; min-width: 0; }
+    .detail-panel {
+      width: 0;
+      overflow: hidden;
+      border-left: 1px solid var(--border);
+      background: var(--panel-bg);
+      transition: width 0.2s ease;
+      flex-shrink: 0;
       display: flex;
-      align-items: center;
-      gap: 6px;
+      flex-direction: column;
     }
-
-    .stat-value {
-      font-weight: 600;
-      color: var(--text);
-    }
+    .detail-panel.open { width: 520px; }
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-      gap: 16px;
-      padding: 24px 32px;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 12px;
     }
-
     .card {
       background: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 20px;
+      padding: 16px;
       box-shadow: var(--shadow);
-      transition: box-shadow 0.15s ease, transform 0.15s ease;
+      transition: box-shadow 0.15s ease, border-color 0.15s ease;
+      cursor: pointer;
     }
-
-    .card:hover {
-      box-shadow: var(--shadow-hover);
-      transform: translateY(-1px);
+    .card:hover { box-shadow: var(--shadow-hover); }
+    .card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+    .project-name { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+    .status-badge {
+      font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: 10px;
+      text-transform: uppercase; letter-spacing: 0.03em; flex-shrink: 0;
     }
+    .status-active { background: #d1fae5; color: #065f46; }
+    [data-theme="dark"] .status-active { background: #064e3b; color: #6ee7b7; }
+    .status-idle { background: #fef3c7; color: #92400e; }
+    [data-theme="dark"] .status-idle { background: #78350f; color: #fcd34d; }
+    .card-meta { font-size: 11px; color: var(--text-secondary); display: flex; gap: 12px; flex-wrap: wrap; }
+    .card-meta span { white-space: nowrap; }
+    .card-badges { margin-top: 8px; display: flex; gap: 5px; flex-wrap: wrap; }
+    .badge {
+      font-size: 9px; padding: 2px 6px; border-radius: 4px;
+      background: var(--border); color: var(--text-secondary);
+    }
+    .badge-board { background: #dbeafe; color: #1e40af; }
+    [data-theme="dark"] .badge-board { background: #1e3a5f; color: #93c5fd; }
 
-    .card-header {
+    /* Detail panel */
+    .detail-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 14px;
-    }
-
-    .project-name {
-      font-size: 15px;
-      font-weight: 600;
-      letter-spacing: -0.01em;
-      word-break: break-all;
-    }
-
-    .status-badge {
-      font-size: 11px;
-      font-weight: 500;
-      padding: 3px 8px;
-      border-radius: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
+      align-items: center;
       flex-shrink: 0;
     }
-
-    .status-active {
-      background: #d1fae5;
-      color: #065f46;
+    .detail-header h2 { font-size: 15px; font-weight: 600; }
+    .detail-close {
+      background: none; border: none; color: var(--text-secondary);
+      cursor: pointer; font-size: 18px; font-family: inherit; padding: 4px 8px;
     }
-
-    [data-theme="dark"] .status-active {
-      background: #064e3b;
-      color: #6ee7b7;
-    }
-
-    .status-idle {
-      background: #fef3c7;
-      color: #92400e;
-    }
-
-    [data-theme="dark"] .status-idle {
-      background: #78350f;
-      color: #fcd34d;
-    }
-
-    .card-details {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
-    .detail {
+    .detail-close:hover { color: var(--text); }
+    .tabs {
       display: flex;
-      flex-direction: column;
-      gap: 2px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
-
-    .detail-label {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+    .tab {
+      padding: 10px 16px;
+      font-size: 12px;
+      font-family: inherit;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
       color: var(--text-secondary);
+      cursor: pointer;
     }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-content { flex: 1; overflow-y: auto; padding: 16px 20px; }
 
-    .detail-value {
-      font-size: 13px;
-      font-weight: 500;
+    /* Detail info styles */
+    .info-section { margin-bottom: 20px; }
+    .info-section-title {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;
     }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .info-item { display: flex; flex-direction: column; gap: 1px; }
+    .info-label { font-size: 10px; color: var(--text-secondary); }
+    .info-value { font-size: 12px; font-weight: 500; word-break: break-all; }
+    .info-mono { font-size: 11px; color: var(--text-secondary); line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
 
-    .meter-container {
-      margin-top: 14px;
-      display: flex;
-      gap: 12px;
+    /* Kanban board */
+    .kanban { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; }
+    .kanban-col { min-width: 200px; flex: 1; }
+    .kanban-col-title {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;
+      display: flex; justify-content: space-between;
     }
-
-    .meter {
-      flex: 1;
-    }
-
-    .meter-header {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 4px;
-    }
-
-    .meter-label {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-secondary);
-    }
-
-    .meter-value {
-      font-size: 10px;
-      font-weight: 600;
-      color: var(--text);
-    }
-
-    .meter-bar {
-      height: 4px;
-      background: var(--border);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    .meter-fill {
-      height: 100%;
-      border-radius: 2px;
-      transition: width 0.3s ease;
-    }
-
-    .meter-fill.cpu {
-      background: var(--accent);
-    }
-
-    .meter-fill.mem {
-      background: #8b5cf6;
-    }
-
-    .flags {
-      margin-top: 12px;
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-
-    .flag {
-      font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: var(--border);
-      color: var(--text-secondary);
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 80px 32px;
-      color: var(--text-secondary);
-    }
-
-    .empty-state h2 {
-      font-size: 16px;
-      margin-bottom: 8px;
-      color: var(--text);
-    }
-
-    .card-path {
+    .kanban-count { font-weight: 400; }
+    .kanban-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
       font-size: 11px;
-      color: var(--text-secondary);
-      margin-bottom: 14px;
-      word-break: break-all;
       line-height: 1.4;
     }
+    .kanban-card-title { font-weight: 500; margin-bottom: 4px; }
+    .kanban-card-meta { font-size: 9px; color: var(--text-secondary); display: flex; gap: 6px; }
+    .tag-badge {
+      font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 500;
+    }
+    .tag-feature { background: #dbeafe; color: #1e40af; }
+    .tag-bug { background: #fee2e2; color: #991b1b; }
+    .tag-chore { background: #e2e8f0; color: #475569; }
+    .tag-design { background: #fae8ff; color: #86198f; }
+    .tag-docs { background: #d1fae5; color: #065f46; }
+    .tag-test { background: #fef3c7; color: #92400e; }
+    [data-theme="dark"] .tag-feature { background: #1e3a5f; color: #93c5fd; }
+    [data-theme="dark"] .tag-bug { background: #5f1d1d; color: #fca5a5; }
+    [data-theme="dark"] .tag-chore { background: #334155; color: #94a3b8; }
+    [data-theme="dark"] .tag-design { background: #4a1d6a; color: #e9d5ff; }
+    [data-theme="dark"] .tag-docs { background: #064e3b; color: #6ee7b7; }
+    [data-theme="dark"] .tag-test { background: #78350f; color: #fcd34d; }
+    [data-theme="dark"] .kanban-card { background: var(--card-bg); }
+
+    .meter-container { margin-top: 10px; display: flex; gap: 10px; }
+    .meter { flex: 1; }
+    .meter-header { display: flex; justify-content: space-between; margin-bottom: 3px; }
+    .meter-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+    .meter-value { font-size: 10px; font-weight: 600; color: var(--text); }
+    .meter-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .meter-fill { height: 100%; border-radius: 2px; transition: width 0.3s ease; }
+    .meter-fill.cpu { background: var(--accent); }
+    .meter-fill.mem { background: #8b5cf6; }
+    .empty-state { text-align: center; padding: 60px 24px; color: var(--text-secondary); }
+    .empty-state h2 { font-size: 16px; margin-bottom: 8px; color: var(--text); }
+    .detail-loading { padding: 40px; text-align: center; color: var(--text-secondary); font-size: 12px; }
+    .context-bar { margin-top: 10px; }
+    .context-header { display: flex; justify-content: space-between; margin-bottom: 3px; }
+    .context-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+    .context-value { font-size: 10px; font-weight: 600; color: var(--text); }
+    .context-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .context-fill { height: 100%; border-radius: 2px; transition: width 0.3s ease; background: #10b981; }
+    .context-fill.warn { background: #f59e0b; }
+    .context-fill.crit { background: #ef4444; }
   </style>
 </head>
 <body>
@@ -297,28 +237,41 @@
         <div class="connection-dot" id="connDot"></div>
         <span id="connText">Connecting...</span>
       </div>
-      <button class="lock-toggle" id="lockToggle" onclick="toggleLock()">sort: auto</button>
-      <button class="theme-toggle" onclick="toggleTheme()">light / dark / system</button>
+      <button class="hdr-btn" id="lockToggle" onclick="toggleLock()">sort: auto</button>
+      <button class="hdr-btn" onclick="toggleTheme()">light / dark / system</button>
     </div>
   </div>
-  <div class="stats-bar" id="statsBar">
+  <div class="stats-bar">
     <div class="stat">Sessions: <span class="stat-value" id="totalSessions">0</span></div>
     <div class="stat">Active: <span class="stat-value" id="activeSessions">0</span></div>
     <div class="stat">Total CPU: <span class="stat-value" id="totalCpu">0%</span></div>
     <div class="stat">Total MEM: <span class="stat-value" id="totalMem">0%</span></div>
     <div class="stat">Last update: <span class="stat-value" id="lastUpdate">--</span></div>
   </div>
-  <div id="content"></div>
+  <div class="main">
+    <div class="cards-panel" id="cardsPanel"></div>
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-header">
+        <h2 id="detailTitle">Project</h2>
+        <button class="detail-close" onclick="closeDetail()">x</button>
+      </div>
+      <div class="tabs" id="detailTabs"></div>
+      <div class="tab-content" id="tabContent"></div>
+    </div>
+  </div>
 
   <script>
     let sessions = [];
     let ws;
     let locked = localStorage.getItem('locked') === 'true';
-    let lockedOrder = []; // PIDs in locked order
+    let lockedOrder = [];
     let themeMode = localStorage.getItem('theme') || 'light';
+    let selectedPid = null;
+    let detailData = null;
+    let activeTab = 'overview';
+
     applyTheme();
     updateLockButton();
-    renderEmpty('Connecting to Traffic Control...', 'Waiting for WebSocket connection');
 
     function applyTheme() {
       if (themeMode === 'system') {
@@ -328,54 +281,41 @@
         document.documentElement.setAttribute('data-theme', themeMode);
       }
     }
-
     function toggleTheme() {
       const modes = ['light', 'dark', 'system'];
-      const idx = modes.indexOf(themeMode);
-      themeMode = modes[(idx + 1) % modes.length];
+      themeMode = modes[(modes.indexOf(themeMode) + 1) % modes.length];
       localStorage.setItem('theme', themeMode);
       applyTheme();
     }
-
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (themeMode === 'system') applyTheme();
     });
-
     function toggleLock() {
       locked = !locked;
       localStorage.setItem('locked', locked);
-      if (locked) {
-        // Capture current order
-        lockedOrder = sessions.map(s => s.pid);
-      }
+      if (locked) lockedOrder = sessions.map(s => s.pid);
       updateLockButton();
       render();
     }
-
     function updateLockButton() {
       const btn = document.getElementById('lockToggle');
-      if (!btn) return;
       btn.textContent = locked ? 'sort: locked' : 'sort: auto';
-      btn.classList.toggle('locked', locked);
+      btn.classList.toggle('active', locked);
     }
 
     function connect() {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${protocol}//${location.host}/ws`);
-
       ws.onopen = () => {
         document.getElementById('connDot').classList.add('connected');
         document.getElementById('connText').textContent = 'Connected';
       };
-
       ws.onclose = () => {
         document.getElementById('connDot').classList.remove('connected');
         document.getElementById('connText').textContent = 'Reconnecting...';
         setTimeout(connect, 2000);
       };
-
       ws.onerror = () => ws.close();
-
       ws.onmessage = (event) => {
         sessions = JSON.parse(event.data);
         render();
@@ -387,6 +327,7 @@
       if (attrs) {
         for (const [k, v] of Object.entries(attrs)) {
           if (k === 'className') node.className = v;
+          else if (k === 'onclick') node.addEventListener('click', v);
           else if (k.startsWith('style_')) node.style[k.slice(6)] = v;
           else node.setAttribute(k, v);
         }
@@ -398,76 +339,51 @@
       return node;
     }
 
-    function renderEmpty(title, subtitle) {
-      const content = document.getElementById('content');
-      content.textContent = '';
-      content.appendChild(
-        el('div', { className: 'empty-state' },
-          el('h2', null, title),
-          el('p', null, subtitle)
-        )
-      );
-    }
-
     function buildCard(s) {
-      const header = el('div', { className: 'card-header' },
-        el('span', { className: 'project-name' }, s.projectShort),
-        el('span', { className: `status-badge status-${s.status}` }, s.status)
-      );
-
-      const path = el('div', { className: 'card-path' }, s.project);
-
-      const details = el('div', { className: 'card-details' },
-        el('div', { className: 'detail' },
-          el('span', { className: 'detail-label' }, 'PID'),
-          el('span', { className: 'detail-value' }, String(s.pid))
+      const isSelected = selectedPid === s.pid;
+      const card = el('div', {
+        className: 'card' + (isSelected ? ' selected' : ''),
+        onclick: () => selectSession(s)
+      },
+        el('div', { className: 'card-header' },
+          el('span', { className: 'project-name' }, s.projectShort),
+          el('span', { className: 'status-badge status-' + s.status }, s.status)
         ),
-        el('div', { className: 'detail' },
-          el('span', { className: 'detail-label' }, 'TTY'),
-          el('span', { className: 'detail-value' }, s.tty)
-        ),
-        el('div', { className: 'detail' },
-          el('span', { className: 'detail-label' }, 'STARTED'),
-          el('span', { className: 'detail-value' }, s.startTime)
-        ),
-        el('div', { className: 'detail' },
-          el('span', { className: 'detail-label' }, 'UPTIME'),
-          el('span', { className: 'detail-value' }, s.uptime)
+        el('div', { className: 'card-meta' },
+          el('span', null, 'PID ' + s.pid),
+          el('span', null, s.tty),
+          el('span', null, s.uptime),
+          el('span', null, 'CPU ' + s.cpu.toFixed(1) + '%'),
+          el('span', null, 'MEM ' + s.mem.toFixed(1) + '%')
         )
       );
 
-      const cpuWidth = Math.min(s.cpu, 100) + '%';
-      const memWidth = Math.min(s.mem * 10, 100) + '%';
+      const badges = el('div', { className: 'card-badges' });
+      for (const f of s.flags) {
+        badges.appendChild(el('span', { className: 'badge' }, f));
+      }
+      if (s.hasAgentboard) {
+        badges.appendChild(el('span', { className: 'badge badge-board' }, 'agentboard'));
+      }
+      if (s.hasGit) {
+        badges.appendChild(el('span', { className: 'badge' }, 'git'));
+      }
+      if (badges.childNodes.length > 0) card.appendChild(badges);
 
-      const meters = el('div', { className: 'meter-container' },
-        el('div', { className: 'meter' },
-          el('div', { className: 'meter-header' },
-            el('span', { className: 'meter-label' }, 'CPU'),
-            el('span', { className: 'meter-value' }, s.cpu.toFixed(1) + '%')
+      // Context progress bar
+      if (s.contextPercent != null) {
+        const pct = Math.min(s.contextPercent, 100);
+        const fillClass = pct >= 80 ? 'crit' : pct >= 50 ? 'warn' : '';
+        const tokens = s.contextTokens >= 1000 ? Math.round(s.contextTokens / 1000) + 'k' : s.contextTokens;
+        card.appendChild(el('div', { className: 'context-bar' },
+          el('div', { className: 'context-header' },
+            el('span', { className: 'context-label' }, 'Context'),
+            el('span', { className: 'context-value' }, tokens + ' / 200k (' + pct + '%)')
           ),
-          el('div', { className: 'meter-bar' },
-            el('div', { className: 'meter-fill cpu', style_width: cpuWidth })
+          el('div', { className: 'context-track' },
+            el('div', { className: 'context-fill ' + fillClass, style_width: pct + '%' })
           )
-        ),
-        el('div', { className: 'meter' },
-          el('div', { className: 'meter-header' },
-            el('span', { className: 'meter-label' }, 'MEM'),
-            el('span', { className: 'meter-value' }, s.mem.toFixed(1) + '%')
-          ),
-          el('div', { className: 'meter-bar' },
-            el('div', { className: 'meter-fill mem', style_width: memWidth })
-          )
-        )
-      );
-
-      const card = el('div', { className: 'card' }, header, path, details, meters);
-
-      if (s.flags && s.flags.length > 0) {
-        const flagsContainer = el('div', { className: 'flags' });
-        for (const f of s.flags) {
-          flagsContainer.appendChild(el('span', { className: 'flag' }, f));
-        }
-        card.appendChild(flagsContainer);
+        ));
       }
 
       return card;
@@ -477,27 +393,26 @@
       const totalCpu = sessions.reduce((a, s) => a + s.cpu, 0);
       const totalMem = sessions.reduce((a, s) => a + s.mem, 0);
       const active = sessions.filter(s => s.status === 'active').length;
-
       document.getElementById('totalSessions').textContent = sessions.length;
       document.getElementById('activeSessions').textContent = active;
       document.getElementById('totalCpu').textContent = totalCpu.toFixed(1) + '%';
       document.getElementById('totalMem').textContent = totalMem.toFixed(1) + '%';
       document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
 
-      const content = document.getElementById('content');
-
+      const panel = document.getElementById('cardsPanel');
       if (sessions.length === 0) {
-        renderEmpty('No Claude sessions running', 'Start a Claude CLI session to see it here');
+        panel.textContent = '';
+        panel.appendChild(el('div', { className: 'empty-state' },
+          el('h2', null, 'No Claude sessions running'),
+          el('p', null, 'Start a Claude CLI session to see it here')
+        ));
         return;
       }
 
       let ordered;
       if (locked && lockedOrder.length > 0) {
         const byPid = new Map(sessions.map(s => [s.pid, s]));
-        ordered = lockedOrder
-          .filter(pid => byPid.has(pid))
-          .map(pid => byPid.get(pid));
-        // Append any new sessions not in locked order
+        ordered = lockedOrder.filter(pid => byPid.has(pid)).map(pid => byPid.get(pid));
         for (const s of sessions) {
           if (!lockedOrder.includes(s.pid)) ordered.push(s);
         }
@@ -506,17 +421,299 @@
           if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
           return b.cpu - a.cpu;
         });
-        // Keep lockedOrder in sync for when lock is toggled on
         lockedOrder = ordered.map(s => s.pid);
       }
 
       const grid = el('div', { className: 'grid' });
-      for (const s of ordered) {
-        grid.appendChild(buildCard(s));
+      for (const s of ordered) grid.appendChild(buildCard(s));
+      panel.textContent = '';
+      panel.appendChild(grid);
+
+      // If selected session disappeared, close panel
+      if (selectedPid && !sessions.find(s => s.pid === selectedPid)) {
+        closeDetail();
+      }
+    }
+
+    async function selectSession(s) {
+      if (selectedPid === s.pid) {
+        closeDetail();
+        return;
+      }
+      selectedPid = s.pid;
+      detailData = null;
+      activeTab = 'overview';
+
+      document.getElementById('detailPanel').classList.add('open');
+      document.getElementById('detailTitle').textContent = s.projectShort;
+      renderTabs(s);
+      renderTabContent(s);
+
+      // Re-render cards to update selection
+      render();
+
+      // Fetch detail data
+      try {
+        const res = await fetch('/api/detail?project=' + encodeURIComponent(s.project));
+        detailData = await res.json();
+        renderTabs(s);
+        renderTabContent(s);
+      } catch (e) {
+        console.error('Failed to fetch detail:', e);
+      }
+    }
+
+    function closeDetail() {
+      selectedPid = null;
+      detailData = null;
+      document.getElementById('detailPanel').classList.remove('open');
+      render();
+    }
+
+    function renderTabs(s) {
+      const tabsDef = [{ id: 'overview', label: 'Overview' }];
+      if (s.hasGit || (detailData && detailData.git)) tabsDef.push({ id: 'git', label: 'Git' });
+      if (s.hasAgentboard || (detailData && detailData.agentboard)) tabsDef.push({ id: 'board', label: 'Agentboard' });
+      if (detailData && detailData.package) tabsDef.push({ id: 'package', label: 'Package' });
+      if (detailData && (detailData.claudeMd || detailData.projectClaudeMd)) tabsDef.push({ id: 'claude', label: 'CLAUDE.md' });
+
+      const tabsEl = document.getElementById('detailTabs');
+      tabsEl.textContent = '';
+      for (const t of tabsDef) {
+        tabsEl.appendChild(el('button', {
+          className: 'tab' + (activeTab === t.id ? ' active' : ''),
+          onclick: () => { activeTab = t.id; renderTabs(s); renderTabContent(s); }
+        }, t.label));
+      }
+    }
+
+    function renderTabContent(s) {
+      const container = document.getElementById('tabContent');
+      container.textContent = '';
+
+      const session = sessions.find(x => x.pid === s.pid) || s;
+
+      if (activeTab === 'overview') {
+        renderOverview(container, session);
+      } else if (activeTab === 'git') {
+        renderGit(container);
+      } else if (activeTab === 'board') {
+        renderBoard(container);
+      } else if (activeTab === 'package') {
+        renderPackage(container);
+      } else if (activeTab === 'claude') {
+        renderClaudeMd(container);
+      }
+    }
+
+    function renderOverview(container, s) {
+      // Process info
+      const section = el('div', { className: 'info-section' },
+        el('div', { className: 'info-section-title' }, 'Process'),
+        el('div', { className: 'info-grid' },
+          infoItem('PID', String(s.pid)),
+          infoItem('TTY', s.tty),
+          infoItem('Started', s.startTime),
+          infoItem('Uptime', s.uptime),
+          infoItem('Status', s.status),
+          infoItem('Flags', s.flags.join(', ') || 'none')
+        )
+      );
+      container.appendChild(section);
+
+      // Resource meters
+      const meters = el('div', { className: 'info-section' },
+        el('div', { className: 'info-section-title' }, 'Resources')
+      );
+      const meterContainer = el('div', { className: 'meter-container' },
+        buildMeter('CPU', s.cpu, 'cpu', Math.min(s.cpu, 100)),
+        buildMeter('MEM', s.mem, 'mem', Math.min(s.mem * 10, 100))
+      );
+      meters.appendChild(meterContainer);
+      container.appendChild(meters);
+
+      // Path
+      container.appendChild(el('div', { className: 'info-section' },
+        el('div', { className: 'info-section-title' }, 'Project Path'),
+        el('div', { className: 'info-value' }, s.project)
+      ));
+
+      if (!detailData) {
+        container.appendChild(el('div', { className: 'detail-loading' }, 'Loading details...'));
+        return;
       }
 
-      content.textContent = '';
-      content.appendChild(grid);
+      // Session count
+      if (detailData.sessionCount) {
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'History'),
+          el('div', { className: 'info-value' }, detailData.sessionCount + ' past sessions in .claude')
+        ));
+      }
+
+      // Quick git summary
+      if (detailData.git) {
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'Git'),
+          el('div', { className: 'info-grid' },
+            infoItem('Branch', detailData.git.branch),
+            infoItem('Dirty', detailData.git.dirty ? detailData.git.changedFiles + ' files' : 'clean')
+          )
+        ));
+      }
+
+      // Agentboard summary
+      if (detailData.agentboard) {
+        const tasks = detailData.agentboard.tasks || [];
+        const cols = {};
+        for (const t of tasks) {
+          cols[t.column] = (cols[t.column] || 0) + 1;
+        }
+        const summary = Object.entries(cols).map(([k,v]) => k + ': ' + v).join(', ');
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'Agentboard'),
+          el('div', { className: 'info-value' }, tasks.length + ' tasks (' + summary + ')')
+        ));
+      }
+    }
+
+    function renderGit(container) {
+      if (!detailData || !detailData.git) {
+        container.appendChild(el('div', { className: 'detail-loading' }, 'Loading...'));
+        return;
+      }
+      const g = detailData.git;
+      container.appendChild(el('div', { className: 'info-section' },
+        el('div', { className: 'info-section-title' }, 'Repository'),
+        el('div', { className: 'info-grid' },
+          infoItem('Branch', g.branch),
+          infoItem('Dirty', g.dirty ? g.changedFiles + ' changed files' : 'clean'),
+          infoItem('Remote', g.remoteUrl || 'none')
+        )
+      ));
+      container.appendChild(el('div', { className: 'info-section' },
+        el('div', { className: 'info-section-title' }, 'Last Commit'),
+        el('div', { className: 'info-mono' }, g.lastCommit)
+      ));
+    }
+
+    function renderBoard(container) {
+      if (!detailData || !detailData.agentboard) {
+        container.appendChild(el('div', { className: 'detail-loading' }, 'Loading...'));
+        return;
+      }
+      const board = detailData.agentboard;
+      const columns = board.columns || ['backlog', 'todo', 'in_progress', 'done'];
+      const tasks = board.tasks || [];
+
+      // Board header
+      container.appendChild(el('div', { className: 'info-section' },
+        el('div', { className: 'info-section-title' }, board.project + ' - ' + tasks.length + ' tasks'),
+      ));
+
+      const kanban = el('div', { className: 'kanban' });
+
+      for (const col of columns) {
+        const colTasks = tasks.filter(t => t.column === col);
+        const colEl = el('div', { className: 'kanban-col' });
+
+        const label = col.replace(/_/g, ' ');
+        colEl.appendChild(el('div', { className: 'kanban-col-title' },
+          el('span', null, label),
+          el('span', { className: 'kanban-count' }, String(colTasks.length))
+        ));
+
+        // Limit shown cards for done column
+        const showTasks = col === 'done' ? colTasks.slice(-8) : colTasks;
+        if (col === 'done' && colTasks.length > 8) {
+          colEl.appendChild(el('div', {
+            className: 'kanban-card',
+            style_textAlign: 'center',
+            style_color: 'var(--text-secondary)',
+            style_fontSize: '10px'
+          }, '... ' + (colTasks.length - 8) + ' more done tasks'));
+        }
+
+        for (const t of showTasks) {
+          const card = el('div', { className: 'kanban-card' },
+            el('div', { className: 'kanban-card-title' }, t.title)
+          );
+          const meta = el('div', { className: 'kanban-card-meta' });
+          if (t.tag) {
+            meta.appendChild(el('span', { className: 'tag-badge tag-' + t.tag }, t.tag));
+          }
+          if (t.priority) {
+            meta.appendChild(el('span', null, t.priority));
+          }
+          card.appendChild(meta);
+          colEl.appendChild(card);
+        }
+
+        kanban.appendChild(colEl);
+      }
+
+      container.appendChild(kanban);
+    }
+
+    function renderPackage(container) {
+      if (!detailData || !detailData.package) return;
+      const p = detailData.package;
+      container.appendChild(el('div', { className: 'info-section' },
+        el('div', { className: 'info-section-title' }, 'Package'),
+        el('div', { className: 'info-grid' },
+          infoItem('Name', p.name || '-'),
+          infoItem('Version', p.version || '-'),
+          infoItem('Dependencies', String(p.dependencies)),
+          infoItem('Dev Dependencies', String(p.devDependencies))
+        )
+      ));
+      if (p.description) {
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'Description'),
+          el('div', { className: 'info-mono' }, p.description)
+        ));
+      }
+      if (p.scripts && p.scripts.length > 0) {
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'Scripts'),
+          el('div', { className: 'info-mono' }, p.scripts.join(', '))
+        ));
+      }
+    }
+
+    function renderClaudeMd(container) {
+      if (!detailData) return;
+      if (detailData.claudeMd) {
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'Project CLAUDE.md'),
+          el('div', { className: 'info-mono' }, detailData.claudeMd)
+        ));
+      }
+      if (detailData.projectClaudeMd) {
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, '.claude/projects CLAUDE.md'),
+          el('div', { className: 'info-mono' }, detailData.projectClaudeMd)
+        ));
+      }
+    }
+
+    function infoItem(label, value) {
+      return el('div', { className: 'info-item' },
+        el('span', { className: 'info-label' }, label),
+        el('span', { className: 'info-value' }, value || '-')
+      );
+    }
+
+    function buildMeter(label, value, cls, widthPct) {
+      return el('div', { className: 'meter' },
+        el('div', { className: 'meter-header' },
+          el('span', { className: 'meter-label' }, label),
+          el('span', { className: 'meter-value' }, value.toFixed(1) + '%')
+        ),
+        el('div', { className: 'meter-bar' },
+          el('div', { className: 'meter-fill ' + cls, style_width: widthPct + '%' })
+        )
+      );
     }
 
     connect();

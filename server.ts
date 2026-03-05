@@ -1,9 +1,12 @@
 import { $ } from "bun";
 import { join } from "path";
 import { execFileSync } from "child_process";
+import { readFile, stat, readdir } from "fs/promises";
 
 const PORT = 3847;
 const POLL_INTERVAL = 2000;
+const CLAUDE_DIR = join(process.env.HOME!, ".claude");
+const CONTEXT_WINDOW = 200_000; // Opus 4.6 context window
 
 interface ClaudeSession {
   pid: number;
@@ -16,6 +19,10 @@ interface ClaudeSession {
   projectShort: string;
   flags: string[];
   status: "active" | "idle";
+  hasAgentboard: boolean;
+  hasGit: boolean;
+  contextTokens?: number;
+  contextPercent?: number;
 }
 
 async function getClaudeSessions(): Promise<ClaudeSession[]> {
@@ -101,11 +108,12 @@ async function getClaudeSessions(): Promise<ClaudeSession[]> {
       const project = projectMap.get(pid) || "unknown";
       const projectShort = project === "unknown" ? "unknown" : project.split("/").slice(-2).join("/");
 
-      // Determine status based on CPU usage
       const status = cpu > 1.0 ? "active" : "idle";
-
-      // Calculate uptime
       const uptime = await getUptime(pid);
+
+      const hasAgentboard = project !== "unknown" && await fileExists(join(project, ".agentboard", "board.json"));
+      const hasGit = project !== "unknown" && await fileExists(join(project, ".git"));
+      const context = project !== "unknown" ? await getContextUsage(project) : undefined;
 
       sessions.push({
         pid,
@@ -118,6 +126,10 @@ async function getClaudeSessions(): Promise<ClaudeSession[]> {
         projectShort,
         flags,
         status,
+        hasAgentboard,
+        hasGit,
+        contextTokens: context?.tokens,
+        contextPercent: context?.percent,
       });
     }
 
@@ -137,6 +149,140 @@ async function getUptime(pid: number): Promise<string> {
   }
 }
 
+async function getContextUsage(projectPath: string): Promise<{ tokens: number; percent: number } | undefined> {
+  try {
+    const sanitized = projectPath.replace(/\//g, "-");
+    const projDir = join(CLAUDE_DIR, "projects", sanitized);
+    const files = await readdir(projDir);
+    const jsonlFiles = files.filter(f => f.endsWith(".jsonl"));
+    if (jsonlFiles.length === 0) return undefined;
+
+    // Find the most recently modified JSONL
+    let newest = { name: "", mtime: 0 };
+    for (const f of jsonlFiles) {
+      try {
+        const s = await stat(join(projDir, f));
+        if (s.mtimeMs > newest.mtime) {
+          newest = { name: f, mtime: s.mtimeMs };
+        }
+      } catch {}
+    }
+    if (!newest.name) return undefined;
+
+    // Read the last few KB to find the most recent assistant message with usage
+    const filePath = join(projDir, newest.name);
+    const fileHandle = Bun.file(filePath);
+    const size = fileHandle.size;
+    const readSize = Math.min(size, 32768);
+    const slice = fileHandle.slice(size - readSize, size);
+    const tail = await slice.text();
+    const lines = tail.split("\n").filter(Boolean);
+
+    // Search backwards for the last assistant message with usage
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const entry = JSON.parse(lines[i]);
+        if (entry.type === "assistant" && entry.message?.usage) {
+          const u = entry.message.usage;
+          const totalInput = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+          const totalTokens = totalInput + (u.output_tokens || 0);
+          return {
+            tokens: totalTokens,
+            percent: Math.round((totalTokens / CONTEXT_WINDOW) * 100),
+          };
+        }
+      } catch {}
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function getProjectDetail(projectPath: string) {
+  const detail: Record<string, any> = { project: projectPath };
+
+  // Git info
+  try {
+    const gitExec = (args: string[]) => {
+      try {
+        return execFileSync("git", ["-c", "color.ui=never", "-C", projectPath, ...args], {
+          encoding: "utf-8", timeout: 3000, stdio: ["pipe", "pipe", "pipe"],
+        }).trim();
+      } catch { return ""; }
+    };
+
+    const branch = gitExec(["rev-parse", "--abbrev-ref", "HEAD"]);
+    if (branch) {
+      const lastCommit = gitExec(["log", "-1", "--format=%h %s (%ar)"]);
+      const status = gitExec(["status", "--porcelain"]);
+      const remoteUrl = gitExec(["remote", "get-url", "origin"]).replace(/\.git$/, "");
+
+      detail.git = {
+        branch,
+        lastCommit,
+        dirty: status.length > 0,
+        changedFiles: status ? status.split("\n").length : 0,
+        remoteUrl: remoteUrl || undefined,
+      };
+    }
+  } catch {}
+
+  // Package info
+  try {
+    const pkg = JSON.parse(await readFile(join(projectPath, "package.json"), "utf-8"));
+    detail.package = {
+      name: pkg.name,
+      version: pkg.version,
+      description: pkg.description,
+      scripts: pkg.scripts ? Object.keys(pkg.scripts) : [],
+      dependencies: pkg.dependencies ? Object.keys(pkg.dependencies).length : 0,
+      devDependencies: pkg.devDependencies ? Object.keys(pkg.devDependencies).length : 0,
+    };
+  } catch {}
+
+  // CLAUDE.md
+  try {
+    const claudeMd = await readFile(join(projectPath, "CLAUDE.md"), "utf-8");
+    detail.claudeMd = claudeMd.slice(0, 2000);
+  } catch {}
+
+  // Project-level .claude CLAUDE.md
+  try {
+    const sanitized = projectPath.replace(/\//g, "-");
+    const projClaudeMd = await readFile(
+      join(process.env.HOME!, ".claude", "projects", sanitized, "CLAUDE.md"), "utf-8"
+    );
+    detail.projectClaudeMd = projClaudeMd.slice(0, 2000);
+  } catch {}
+
+  // Agentboard
+  try {
+    const boardJson = await readFile(join(projectPath, ".agentboard", "board.json"), "utf-8");
+    detail.agentboard = JSON.parse(boardJson);
+  } catch {}
+
+  // Session count from .claude/projects
+  try {
+    const sanitized = projectPath.replace(/\//g, "-");
+    const projDir = join(process.env.HOME!, ".claude", "projects", sanitized);
+    const files = await readdir(projDir);
+    const sessionFiles = files.filter(f => f.endsWith(".jsonl"));
+    detail.sessionCount = sessionFiles.length;
+  } catch {}
+
+  return detail;
+}
+
 // Serve static files and WebSocket
 const server = Bun.serve({
   port: PORT,
@@ -153,6 +299,14 @@ const server = Bun.serve({
     if (url.pathname === "/api/sessions") {
       const sessions = await getClaudeSessions();
       return Response.json(sessions);
+    }
+
+    // Project detail endpoint
+    if (url.pathname === "/api/detail") {
+      const projectPath = url.searchParams.get("project");
+      if (!projectPath) return Response.json({ error: "missing project param" }, { status: 400 });
+      const detail = await getProjectDetail(projectPath);
+      return Response.json(detail);
     }
 
     // Serve index.html
