@@ -243,6 +243,54 @@
     .context-fill { height: 100%; border-radius: 2px; transition: width 0.3s ease; background: #10b981; }
     .context-fill.warn { background: #f59e0b; }
     .context-fill.crit { background: #ef4444; }
+
+    /* Share button on cards */
+    .share-btn {
+      font-size: 10px; padding: 3px 8px; border-radius: 5px;
+      background: var(--accent); color: #fff; border: none;
+      cursor: pointer; font-family: inherit; font-weight: 500;
+    }
+    .share-btn:hover { opacity: 0.9; }
+    .share-btn.shared { background: var(--active); }
+    .card-header-actions { display: flex; align-items: center; gap: 6px; }
+
+    /* Settings modal */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      display: none; z-index: 100; align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 12px; padding: 24px; max-width: 420px; width: 90%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .modal h3 { font-size: 15px; margin-bottom: 16px; }
+    .modal-field { margin-bottom: 12px; }
+    .modal-field label { display: block; font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
+    .modal-field input {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 12px; font-family: inherit;
+      background: var(--bg); color: var(--text);
+    }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .modal-btn {
+      padding: 7px 16px; border-radius: 6px; font-size: 12px;
+      font-family: inherit; cursor: pointer; border: 1px solid var(--border);
+      background: var(--bg); color: var(--text);
+    }
+    .modal-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* Toast notifications */
+    .toast {
+      position: fixed; bottom: 20px; right: 20px; background: var(--card-bg);
+      border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px;
+      font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      z-index: 200; opacity: 0; transition: opacity 0.2s ease;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { border-color: #ef4444; }
+    .board-url { font-size: 11px; color: var(--accent); word-break: break-all; }
   </style>
 </head>
 <body>
@@ -255,6 +303,7 @@
       </div>
       <button class="hdr-btn" id="lockToggle" onclick="toggleLock()">sort: auto</button>
       <button class="hdr-btn" onclick="toggleTheme()">light / dark / system</button>
+      <button class="hdr-btn" onclick="openSettings()">settings</button>
     </div>
   </div>
   <div class="stats-bar">
@@ -277,6 +326,25 @@
     </div>
   </div>
 
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal">
+      <h3>Remote Sharing Settings</h3>
+      <div class="modal-field">
+        <label>Remote Server URL</label>
+        <input type="text" id="remoteUrlInput" placeholder="https://your-server.up.railway.app" />
+      </div>
+      <div id="boardInfo" style="font-size:11px; color:var(--text-secondary); margin-bottom:12px;"></div>
+      <div class="modal-actions">
+        <button class="modal-btn" onclick="closeSettings()">Cancel</button>
+        <button class="modal-btn primary" onclick="saveSettings()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
   <script>
     let sessions = [];
     let ws;
@@ -286,6 +354,12 @@
     let selectedPid = null;
     let detailData = null;
     let activeTab = 'overview';
+    let sharedPids = {};
+    let localConfig = {};
+
+    // Load config and shared state
+    fetch('/api/config').then(r => r.json()).then(c => { localConfig = c; }).catch(() => {});
+    fetch('/api/shared').then(r => r.json()).then(s => { sharedPids = s; }).catch(() => {});
 
     applyTheme();
     updateLockButton();
@@ -358,13 +432,26 @@
 
     function buildCard(s) {
       const isSelected = selectedPid === s.pid;
+      const isShared = !!sharedPids[s.pid];
+
+      const headerActions = el('div', { className: 'card-header-actions' },
+        el('span', { className: 'status-badge status-' + s.status }, s.status)
+      );
+
+      // Share button
+      const shareBtn = el('button', {
+        className: 'share-btn' + (isShared ? ' shared' : ''),
+        onclick: (e) => { e.stopPropagation(); toggleShare(s.pid); }
+      }, isShared ? 'shared' : 'share');
+      headerActions.insertBefore(shareBtn, headerActions.firstChild);
+
       const card = el('div', {
         className: 'card' + (isSelected ? ' selected' : ''),
         onclick: () => selectSession(s)
       },
         el('div', { className: 'card-header' },
           el('span', { className: 'project-name' }, s.projectShort),
-          el('span', { className: 'status-badge status-' + s.status }, s.status)
+          headerActions
         ),
         el('div', { className: 'card-meta' },
           el('span', null, 'PID ' + s.pid),
@@ -737,6 +824,91 @@
           el('div', { className: 'meter-fill ' + cls, style_width: widthPct + '%' })
         )
       );
+    }
+
+    // Share / Settings / Toast
+    async function toggleShare(pid) {
+      if (!localConfig.remoteUrl) {
+        showToast('Set a remote URL in settings first', true);
+        return;
+      }
+      if (sharedPids[pid]) {
+        try {
+          await fetch('/api/unshare', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pid })
+          });
+          delete sharedPids[pid];
+          showToast('Flight unshared');
+        } catch (e) {
+          showToast('Failed to unshare: ' + e, true);
+        }
+      } else {
+        try {
+          const res = await fetch('/api/share', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pid })
+          });
+          const data = await res.json();
+          if (data.error) {
+            showToast(data.error, true);
+            return;
+          }
+          sharedPids[pid] = data.flightId;
+          showToast('Shared! Board: ' + data.url);
+        } catch (e) {
+          showToast('Failed to share: ' + e, true);
+        }
+      }
+      render();
+    }
+
+    function openSettings() {
+      document.getElementById('remoteUrlInput').value = localConfig.remoteUrl || '';
+      const info = document.getElementById('boardInfo');
+      info.textContent = '';
+      if (localConfig.boardGuid) {
+        info.appendChild(document.createTextNode('Board: ' + localConfig.boardGuid));
+        if (localConfig.remoteUrl) {
+          info.appendChild(document.createElement('br'));
+          const link = el('a', {
+            href: localConfig.remoteUrl + '/b/' + localConfig.boardGuid,
+            target: '_blank',
+            className: 'board-url'
+          }, localConfig.remoteUrl + '/b/' + localConfig.boardGuid);
+          info.appendChild(link);
+        }
+      }
+      document.getElementById('settingsModal').classList.add('open');
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsModal').classList.remove('open');
+    }
+
+    async function saveSettings() {
+      const url = document.getElementById('remoteUrlInput').value.trim().replace(/\/$/, '');
+      try {
+        await fetch('/api/config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ remoteUrl: url })
+        });
+        localConfig.remoteUrl = url;
+        closeSettings();
+        showToast('Settings saved');
+      } catch (e) {
+        showToast('Failed to save: ' + e, true);
+      }
+    }
+
+    function showToast(msg, isError) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.className = 'toast show' + (isError ? ' error' : '');
+      setTimeout(() => { toast.className = 'toast'; }, 3000);
     }
 
     // Resize handle drag logic

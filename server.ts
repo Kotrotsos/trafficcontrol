@@ -1,293 +1,388 @@
-import { $ } from "bun";
 import { join } from "path";
-import { execFileSync } from "child_process";
-import { readFile, stat, readdir } from "fs/promises";
+import { getClaudeSessions, getProjectDetail, type ClaudeSession } from "./lib/scanner";
+import { initDB, createBoard, getBoard, setBoardPin, verifyBoardSecret, verifyBoardPin, createFlight, updateFlight, deleteFlight, getFlights, cleanStaleFlights } from "./lib/boards";
 
-const PORT = 3847;
+const PORT = parseInt(process.env.PORT || "3847");
 const POLL_INTERVAL = 2000;
-const CLAUDE_DIR = join(process.env.HOME!, ".claude");
-const CONTEXT_WINDOW = 200_000; // Opus 4.6 context window
+const MODE = (process.env.TRAFFICCONTROL_MODE || "local") as "local" | "remote";
 
-interface ClaudeSession {
-  pid: number;
-  tty: string;
-  cpu: number;
-  mem: number;
-  startTime: string;
-  uptime: string;
-  project: string;
-  projectShort: string;
-  flags: string[];
-  status: "active" | "idle";
-  hasAgentboard: boolean;
-  hasGit: boolean;
-  contextTokens?: number;
-  contextPercent?: number;
+if (MODE === "remote") {
+  const dbPath = process.env.DATABASE_URL || "trafficcontrol.sqlite";
+  initDB(dbPath);
+  // Clean stale flights every minute
+  setInterval(() => cleanStaleFlights(10), 60_000);
 }
 
-async function getClaudeSessions(): Promise<ClaudeSession[]> {
+// Track which flights are being shared (local mode)
+interface SharedFlight {
+  flightId: string;
+  boardGuid: string;
+  boardSecret: string;
+  pid: number;
+}
+const sharedFlights = new Map<number, SharedFlight>(); // pid -> SharedFlight
+
+// Local config storage
+interface LocalConfig {
+  boardGuid?: string;
+  boardSecret?: string;
+  remoteUrl?: string;
+}
+
+async function loadLocalConfig(): Promise<LocalConfig> {
   try {
-    const psOutput =
-      await $`ps aux | grep '[c]laude' | grep -v 'Claude.app' | grep -v 'chrome_crashpad' | grep -v 'Claude Helper'`
-        .text()
-        .catch(() => "");
+    const configPath = join(process.env.HOME!, ".claude", "trafficcontrol.json");
+    const file = Bun.file(configPath);
+    if (await file.exists()) {
+      return JSON.parse(await file.text());
+    }
+  } catch {}
+  return {};
+}
 
-    const lines = psOutput.trim().split("\n").filter(Boolean);
-    const sessions: ClaudeSession[] = [];
+async function saveLocalConfig(config: LocalConfig) {
+  const configPath = join(process.env.HOME!, ".claude", "trafficcontrol.json");
+  await Bun.write(configPath, JSON.stringify(config, null, 2));
+}
 
-    const cliLines = lines.filter(
-      (l) => l.includes("claude ") || l.endsWith("claude")
-    );
+function jsonResponse(data: any, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+  });
+}
 
-    const pids = cliLines
-      .map((l) => {
-        const parts = l.trim().split(/\s+/);
-        return parseInt(parts[1]);
-      })
-      .filter((p) => !isNaN(p));
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, X-Board-Pin, X-Board-Secret",
+  };
+}
 
-    // Get project directories for all PIDs in one lsof call
-    const projectMap = new Map<number, string>();
-    if (pids.length > 0) {
-      const pidArgs = pids.join(",");
-      let lsofOutput = "";
-      try {
-        lsofOutput = execFileSync("lsof", ["-p", pidArgs, "-Fpn"], {
-          encoding: "utf-8",
-          timeout: 5000,
-          stdio: ["pipe", "pipe", "pipe"],
-        });
-      } catch {}
+// Remote mode: board/flight API routes
+async function handleRemoteAPI(req: Request, url: URL): Promise<Response | null> {
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders() });
+  }
 
-      let currentPid = 0;
-      for (const line of lsofOutput.split("\n")) {
-        if (line.startsWith("p")) {
-          currentPid = parseInt(line.slice(1));
-        } else if (line.startsWith("n/")) {
-          const path = line.slice(1);
-          if (
-            !path.includes("/dev/") &&
-            !path.includes("/lib/") &&
-            !path.includes("/System/") &&
-            !path.includes("/private/") &&
-            !path.includes("/usr/") &&
-            !path.includes("/var/") &&
-            !path.includes("/Applications/") &&
-            !path.includes(".local/") &&
-            !path.includes(".claude/") &&
-            !path.includes(".bun/") &&
-            !path.includes("node_modules") &&
-            !projectMap.has(currentPid)
-          ) {
-            // Extract directory from the path
-            const dir = path.includes(".")
-              ? path.substring(0, path.lastIndexOf("/"))
-              : path;
-            if (dir && dir !== "/") {
-              projectMap.set(currentPid, dir);
-            }
-          }
-        }
+  // POST /api/boards - Create a new board
+  if (url.pathname === "/api/boards" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const board = createBoard(body.pin);
+    return jsonResponse({ guid: board.guid, secret: board.secret, pin: board.pin });
+  }
+
+  // GET /api/boards/:guid
+  const boardMatch = url.pathname.match(/^\/api\/boards\/([a-f0-9-]+)$/);
+  if (boardMatch && req.method === "GET") {
+    const guid = boardMatch[1];
+    const board = getBoard(guid);
+    if (!board) return jsonResponse({ error: "Board not found" }, 404);
+
+    if (board.pin) {
+      const pin = req.headers.get("X-Board-Pin");
+      if (!pin || !verifyBoardPin(guid, pin)) {
+        return jsonResponse({ error: "Invalid PIN", requiresPin: true }, 401);
       }
     }
 
-    for (const line of cliLines) {
-      const parts = line.trim().split(/\s+/);
-      const pid = parseInt(parts[1]);
-      const cpu = parseFloat(parts[2]);
-      const mem = parseFloat(parts[3]);
-      const startTime = parts[8];
-      const tty = parts[6];
-      const command = parts.slice(10).join(" ");
+    return jsonResponse({ guid: board.guid, hasPin: !!board.pin, created_at: board.created_at });
+  }
 
-      const flags: string[] = [];
-      if (command.includes("--resume")) flags.push("resumed");
-      if (command.includes("--dangerously-skip-permissions"))
-        flags.push("skip-perms");
+  // PUT /api/boards/:guid/pin
+  const pinMatch = url.pathname.match(/^\/api\/boards\/([a-f0-9-]+)\/pin$/);
+  if (pinMatch && req.method === "PUT") {
+    const guid = pinMatch[1];
+    const secret = req.headers.get("X-Board-Secret");
+    if (!secret || !verifyBoardSecret(guid, secret)) {
+      return jsonResponse({ error: "Unauthorized" }, 403);
+    }
+    const body = await req.json().catch(() => ({}));
+    setBoardPin(guid, body.pin || null);
+    return jsonResponse({ ok: true });
+  }
 
-      const project = projectMap.get(pid) || "unknown";
-      const projectShort = project === "unknown" ? "unknown" : project.split("/").slice(-2).join("/");
+  // POST /api/boards/:guid/flights - Push a flight
+  const flightsPostMatch = url.pathname.match(/^\/api\/boards\/([a-f0-9-]+)\/flights$/);
+  if (flightsPostMatch && req.method === "POST") {
+    const guid = flightsPostMatch[1];
+    const secret = req.headers.get("X-Board-Secret");
+    if (!secret || !verifyBoardSecret(guid, secret)) {
+      return jsonResponse({ error: "Unauthorized" }, 403);
+    }
+    const body = await req.json().catch(() => ({}));
+    const flight = createFlight(guid, body);
+    return jsonResponse(flight);
+  }
 
-      const status = cpu > 1.0 ? "active" : "idle";
-      const uptime = await getUptime(pid);
+  // GET /api/boards/:guid/flights - Get all flights
+  if (flightsPostMatch && req.method === "GET") {
+    const guid = flightsPostMatch[1];
+    const board = getBoard(guid);
+    if (!board) return jsonResponse({ error: "Board not found" }, 404);
 
-      const hasAgentboard = project !== "unknown" && await fileExists(join(project, ".agentboard", "board.json"));
-      const hasGit = project !== "unknown" && await fileExists(join(project, ".git"));
-      const context = project !== "unknown" ? await getContextUsage(project) : undefined;
+    if (board.pin) {
+      const pin = req.headers.get("X-Board-Pin");
+      if (!pin || !verifyBoardPin(guid, pin)) {
+        return jsonResponse({ error: "Invalid PIN", requiresPin: true }, 401);
+      }
+    }
 
-      sessions.push({
-        pid,
-        tty,
-        cpu,
-        mem,
-        startTime,
-        uptime,
-        project,
-        projectShort,
-        flags,
-        status,
-        hasAgentboard,
-        hasGit,
-        contextTokens: context?.tokens,
-        contextPercent: context?.percent,
+    const flights = getFlights(guid);
+    return jsonResponse(flights);
+  }
+
+  // PUT /api/boards/:guid/flights/:flightId
+  const flightUpdateMatch = url.pathname.match(/^\/api\/boards\/([a-f0-9-]+)\/flights\/([a-f0-9-]+)$/);
+  if (flightUpdateMatch && req.method === "PUT") {
+    const [, guid, flightId] = flightUpdateMatch;
+    const secret = req.headers.get("X-Board-Secret");
+    if (!secret || !verifyBoardSecret(guid, secret)) {
+      return jsonResponse({ error: "Unauthorized" }, 403);
+    }
+    const body = await req.json().catch(() => ({}));
+    const flight = updateFlight(flightId, guid, body);
+    if (!flight) return jsonResponse({ error: "Flight not found" }, 404);
+    return jsonResponse(flight);
+  }
+
+  // DELETE /api/boards/:guid/flights/:flightId
+  if (flightUpdateMatch && req.method === "DELETE") {
+    const [, guid, flightId] = flightUpdateMatch;
+    const secret = req.headers.get("X-Board-Secret");
+    if (!secret || !verifyBoardSecret(guid, secret)) {
+      return jsonResponse({ error: "Unauthorized" }, 403);
+    }
+    const ok = deleteFlight(flightId, guid);
+    if (!ok) return jsonResponse({ error: "Flight not found" }, 404);
+    return jsonResponse({ ok: true });
+  }
+
+  return null;
+}
+
+// Local mode: share/config API routes
+async function handleLocalAPI(req: Request, url: URL): Promise<Response | null> {
+  // GET /api/config - Get local config (board info)
+  if (url.pathname === "/api/config" && req.method === "GET") {
+    const config = await loadLocalConfig();
+    return jsonResponse({
+      boardGuid: config.boardGuid || null,
+      remoteUrl: config.remoteUrl || null,
+      hasBoard: !!config.boardGuid,
+    });
+  }
+
+  // PUT /api/config - Update local config
+  if (url.pathname === "/api/config" && req.method === "PUT") {
+    const body = await req.json().catch(() => ({}));
+    const config = await loadLocalConfig();
+    if (body.remoteUrl !== undefined) config.remoteUrl = body.remoteUrl;
+    if (body.boardGuid !== undefined) config.boardGuid = body.boardGuid;
+    if (body.boardSecret !== undefined) config.boardSecret = body.boardSecret;
+    await saveLocalConfig(config);
+    return jsonResponse({ ok: true });
+  }
+
+  // POST /api/share - Share a flight to remote board
+  if (url.pathname === "/api/share" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const { pid } = body;
+    if (!pid) return jsonResponse({ error: "Missing pid" }, 400);
+
+    let config = await loadLocalConfig();
+    const remoteUrl = config.remoteUrl;
+    if (!remoteUrl) return jsonResponse({ error: "No remote URL configured. Set it in settings." }, 400);
+
+    // Create board if needed
+    if (!config.boardGuid) {
+      try {
+        const res = await fetch(`${remoteUrl}/api/boards`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        const board = await res.json() as { guid: string; secret: string };
+        config.boardGuid = board.guid;
+        config.boardSecret = board.secret;
+        await saveLocalConfig(config);
+      } catch (e) {
+        return jsonResponse({ error: `Failed to create board: ${e}` }, 500);
+      }
+    }
+
+    // Get current session data for this PID
+    const sessions = await getClaudeSessions();
+    const session = sessions.find(s => s.pid === pid);
+    if (!session) return jsonResponse({ error: "Session not found" }, 404);
+
+    // Get detail data
+    const detail = session.project !== "unknown" ? await getProjectDetail(session.project) : {};
+
+    const flightData = {
+      project: session.project,
+      project_short: session.projectShort,
+      pid: session.pid,
+      status: session.status,
+      cpu: session.cpu,
+      mem: session.mem,
+      uptime: session.uptime,
+      context_tokens: session.contextTokens ?? null,
+      context_percent: session.contextPercent ?? null,
+      flags: JSON.stringify(session.flags),
+      has_agentboard: session.hasAgentboard,
+      has_git: session.hasGit,
+      git_info: (detail as any).git ? JSON.stringify((detail as any).git) : null,
+      agentboard: (detail as any).agentboard ? JSON.stringify((detail as any).agentboard) : null,
+      package_info: (detail as any).package ? JSON.stringify((detail as any).package) : null,
+      claude_md: (detail as any).claudeMd || null,
+    };
+
+    // Check if already shared
+    const existing = sharedFlights.get(pid);
+    if (existing) {
+      // Update existing flight
+      try {
+        const res = await fetch(`${remoteUrl}/api/boards/${config.boardGuid}/flights/${existing.flightId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Board-Secret": config.boardSecret!,
+          },
+          body: JSON.stringify(flightData),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return jsonResponse({ ok: true, flightId: existing.flightId, boardGuid: config.boardGuid, url: `${remoteUrl}/b/${config.boardGuid}` });
+      } catch (e) {
+        return jsonResponse({ error: `Failed to update flight: ${e}` }, 500);
+      }
+    }
+
+    // Create new flight
+    try {
+      const res = await fetch(`${remoteUrl}/api/boards/${config.boardGuid}/flights`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Board-Secret": config.boardSecret!,
+        },
+        body: JSON.stringify(flightData),
       });
+      if (!res.ok) throw new Error(await res.text());
+      const flight = await res.json() as { id: string };
+      sharedFlights.set(pid, {
+        flightId: flight.id,
+        boardGuid: config.boardGuid!,
+        boardSecret: config.boardSecret!,
+        pid,
+      });
+      return jsonResponse({ ok: true, flightId: flight.id, boardGuid: config.boardGuid, url: `${remoteUrl}/b/${config.boardGuid}` });
+    } catch (e) {
+      return jsonResponse({ error: `Failed to push flight: ${e}` }, 500);
     }
-
-    return sessions;
-  } catch (e) {
-    console.error("Error getting sessions:", e);
-    return [];
   }
-}
 
-async function getUptime(pid: number): Promise<string> {
-  try {
-    const elapsed = await $`ps -o etime= -p ${pid}`.text();
-    return elapsed.trim();
-  } catch {
-    return "unknown";
-  }
-}
+  // POST /api/unshare - Stop sharing a flight
+  if (url.pathname === "/api/unshare" && req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    const { pid } = body;
+    const shared = sharedFlights.get(pid);
+    if (!shared) return jsonResponse({ ok: true });
 
-async function getContextUsage(projectPath: string): Promise<{ tokens: number; percent: number } | undefined> {
-  try {
-    const sanitized = projectPath.replace(/\//g, "-");
-    const projDir = join(CLAUDE_DIR, "projects", sanitized);
-    const files = await readdir(projDir);
-    const jsonlFiles = files.filter(f => f.endsWith(".jsonl"));
-    if (jsonlFiles.length === 0) return undefined;
-
-    // Find the most recently modified JSONL
-    let newest = { name: "", mtime: 0 };
-    for (const f of jsonlFiles) {
+    const config = await loadLocalConfig();
+    const remoteUrl = config.remoteUrl;
+    if (remoteUrl && config.boardGuid) {
       try {
-        const s = await stat(join(projDir, f));
-        if (s.mtimeMs > newest.mtime) {
-          newest = { name: f, mtime: s.mtimeMs };
-        }
+        await fetch(`${remoteUrl}/api/boards/${config.boardGuid}/flights/${shared.flightId}`, {
+          method: "DELETE",
+          headers: { "X-Board-Secret": config.boardSecret! },
+        });
       } catch {}
     }
-    if (!newest.name) return undefined;
+    sharedFlights.delete(pid);
+    return jsonResponse({ ok: true });
+  }
 
-    // Read the last few KB to find the most recent assistant message with usage
-    const filePath = join(projDir, newest.name);
-    const fileHandle = Bun.file(filePath);
-    const size = fileHandle.size;
-    const readSize = Math.min(size, 32768);
-    const slice = fileHandle.slice(size - readSize, size);
-    const tail = await slice.text();
-    const lines = tail.split("\n").filter(Boolean);
+  // GET /api/shared - Get list of shared PIDs
+  if (url.pathname === "/api/shared" && req.method === "GET") {
+    const shared: Record<number, string> = {};
+    for (const [pid, info] of sharedFlights) {
+      shared[pid] = info.flightId;
+    }
+    return jsonResponse(shared);
+  }
 
-    // Search backwards for the last assistant message with usage
-    for (let i = lines.length - 1; i >= 0; i--) {
+  return null;
+}
+
+// Periodically push updates for shared flights
+async function pushSharedFlightUpdates() {
+  if (sharedFlights.size === 0) return;
+
+  const config = await loadLocalConfig();
+  if (!config.remoteUrl || !config.boardGuid || !config.boardSecret) return;
+
+  const sessions = await getClaudeSessions();
+  const sessionMap = new Map(sessions.map(s => [s.pid, s]));
+
+  for (const [pid, shared] of sharedFlights) {
+    const session = sessionMap.get(pid);
+    if (!session) {
+      // Session gone, remove flight
       try {
-        const entry = JSON.parse(lines[i]);
-        if (entry.type === "assistant" && entry.message?.usage) {
-          const u = entry.message.usage;
-          const totalInput = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
-          const totalTokens = totalInput + (u.output_tokens || 0);
-          return {
-            tokens: totalTokens,
-            percent: Math.round((totalTokens / CONTEXT_WINDOW) * 100),
-          };
-        }
+        await fetch(`${config.remoteUrl}/api/boards/${config.boardGuid}/flights/${shared.flightId}`, {
+          method: "DELETE",
+          headers: { "X-Board-Secret": config.boardSecret },
+        });
       } catch {}
+      sharedFlights.delete(pid);
+      continue;
     }
-    return undefined;
-  } catch {
-    return undefined;
+
+    const detail = session.project !== "unknown" ? await getProjectDetail(session.project) : {};
+    const flightData = {
+      project: session.project,
+      project_short: session.projectShort,
+      pid: session.pid,
+      status: session.status,
+      cpu: session.cpu,
+      mem: session.mem,
+      uptime: session.uptime,
+      context_tokens: session.contextTokens ?? null,
+      context_percent: session.contextPercent ?? null,
+      flags: JSON.stringify(session.flags),
+      has_agentboard: session.hasAgentboard,
+      has_git: session.hasGit,
+      git_info: (detail as any).git ? JSON.stringify((detail as any).git) : null,
+      agentboard: (detail as any).agentboard ? JSON.stringify((detail as any).agentboard) : null,
+      package_info: (detail as any).package ? JSON.stringify((detail as any).package) : null,
+      claude_md: (detail as any).claudeMd || null,
+    };
+
+    try {
+      await fetch(`${config.remoteUrl}/api/boards/${config.boardGuid}/flights/${shared.flightId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Board-Secret": config.boardSecret,
+        },
+        body: JSON.stringify(flightData),
+      });
+    } catch {}
   }
 }
 
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function getProjectDetail(projectPath: string) {
-  const detail: Record<string, any> = { project: projectPath };
-
-  // Git info
-  try {
-    const gitExec = (args: string[]) => {
-      try {
-        return execFileSync("git", ["-c", "color.ui=never", "-C", projectPath, ...args], {
-          encoding: "utf-8", timeout: 3000, stdio: ["pipe", "pipe", "pipe"],
-        }).trim();
-      } catch { return ""; }
-    };
-
-    const branch = gitExec(["rev-parse", "--abbrev-ref", "HEAD"]);
-    if (branch) {
-      const lastCommit = gitExec(["log", "-1", "--format=%h %s (%ar)"]);
-      const status = gitExec(["status", "--porcelain"]);
-      const remoteUrl = gitExec(["remote", "get-url", "origin"]).replace(/\.git$/, "");
-
-      detail.git = {
-        branch,
-        lastCommit,
-        dirty: status.length > 0,
-        changedFiles: status ? status.split("\n").length : 0,
-        remoteUrl: remoteUrl || undefined,
-      };
-    }
-  } catch {}
-
-  // Package info
-  try {
-    const pkg = JSON.parse(await readFile(join(projectPath, "package.json"), "utf-8"));
-    detail.package = {
-      name: pkg.name,
-      version: pkg.version,
-      description: pkg.description,
-      scripts: pkg.scripts ? Object.keys(pkg.scripts) : [],
-      dependencies: pkg.dependencies ? Object.keys(pkg.dependencies).length : 0,
-      devDependencies: pkg.devDependencies ? Object.keys(pkg.devDependencies).length : 0,
-    };
-  } catch {}
-
-  // CLAUDE.md
-  try {
-    const claudeMd = await readFile(join(projectPath, "CLAUDE.md"), "utf-8");
-    detail.claudeMd = claudeMd.slice(0, 2000);
-  } catch {}
-
-  // Project-level .claude CLAUDE.md
-  try {
-    const sanitized = projectPath.replace(/\//g, "-");
-    const projClaudeMd = await readFile(
-      join(process.env.HOME!, ".claude", "projects", sanitized, "CLAUDE.md"), "utf-8"
-    );
-    detail.projectClaudeMd = projClaudeMd.slice(0, 2000);
-  } catch {}
-
-  // Agentboard
-  try {
-    const boardJson = await readFile(join(projectPath, ".agentboard", "board.json"), "utf-8");
-    detail.agentboard = JSON.parse(boardJson);
-  } catch {}
-
-  // Session count from .claude/projects
-  try {
-    const sanitized = projectPath.replace(/\//g, "-");
-    const projDir = join(process.env.HOME!, ".claude", "projects", sanitized);
-    const files = await readdir(projDir);
-    const sessionFiles = files.filter(f => f.endsWith(".jsonl"));
-    detail.sessionCount = sessionFiles.length;
-  } catch {}
-
-  return detail;
-}
-
-// Serve static files and WebSocket
 const server = Bun.serve({
   port: PORT,
   async fetch(req, server) {
     const url = new URL(req.url);
+
+    // CORS preflight for all API routes
+    if (req.method === "OPTIONS" && url.pathname.startsWith("/api/")) {
+      return new Response(null, { status: 204, headers: corsHeaders() });
+    }
 
     // WebSocket upgrade
     if (url.pathname === "/ws") {
@@ -295,18 +390,37 @@ const server = Bun.serve({
       return new Response("WebSocket upgrade failed", { status: 400 });
     }
 
-    // API endpoint (fallback for non-WS clients)
-    if (url.pathname === "/api/sessions") {
-      const sessions = await getClaudeSessions();
-      return Response.json(sessions);
+    // Remote mode API
+    if (MODE === "remote") {
+      const remoteResponse = await handleRemoteAPI(req, url);
+      if (remoteResponse) return remoteResponse;
     }
 
-    // Project detail endpoint
-    if (url.pathname === "/api/detail") {
-      const projectPath = url.searchParams.get("project");
-      if (!projectPath) return Response.json({ error: "missing project param" }, { status: 400 });
-      const detail = await getProjectDetail(projectPath);
-      return Response.json(detail);
+    // Local mode API
+    if (MODE === "local") {
+      // Session scanning endpoints (local only)
+      if (url.pathname === "/api/sessions") {
+        const sessions = await getClaudeSessions();
+        return jsonResponse(sessions);
+      }
+
+      if (url.pathname === "/api/detail") {
+        const projectPath = url.searchParams.get("project");
+        if (!projectPath) return jsonResponse({ error: "missing project param" }, 400);
+        const detail = await getProjectDetail(projectPath);
+        return jsonResponse(detail);
+      }
+
+      const localResponse = await handleLocalAPI(req, url);
+      if (localResponse) return localResponse;
+    }
+
+    // Remote mode: board view pages
+    if (MODE === "remote") {
+      const boardPageMatch = url.pathname.match(/^\/b\/([a-f0-9-]+)$/);
+      if (boardPageMatch) {
+        return new Response(Bun.file(join(import.meta.dir, "public", "board.html")));
+      }
     }
 
     // Serve index.html
@@ -334,10 +448,22 @@ const server = Bun.serve({
   },
 });
 
-// Broadcast session data every POLL_INTERVAL
-setInterval(async () => {
-  const sessions = await getClaudeSessions();
-  server.publish("sessions", JSON.stringify(sessions));
-}, POLL_INTERVAL);
+// Local mode: broadcast sessions + push shared flights
+if (MODE === "local") {
+  setInterval(async () => {
+    const sessions = await getClaudeSessions();
+    server.publish("sessions", JSON.stringify(sessions));
+  }, POLL_INTERVAL);
 
-console.log(`Traffic Control running at http://localhost:${PORT}`);
+  // Push shared flight updates every 5 seconds
+  setInterval(pushSharedFlightUpdates, 5000);
+}
+
+// Remote mode: broadcast flights for each board via WebSocket
+if (MODE === "remote") {
+  setInterval(() => {
+    // Remote mode WS broadcasts could be added here
+  }, POLL_INTERVAL);
+}
+
+console.log(`Traffic Control (${MODE} mode) running at http://localhost:${PORT}`);

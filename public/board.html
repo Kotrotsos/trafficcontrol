@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traffic Control - Board</title>
+  <style>
+    :root {
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --text: #1a1a2e;
+      --text-secondary: #6c757d;
+      --border: #e2e8f0;
+      --active: #10b981;
+      --idle: #f59e0b;
+      --accent: #3b82f6;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-hover: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
+      --panel-bg: #ffffff;
+    }
+    [data-theme="dark"] {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --border: #334155;
+      --shadow: 0 1px 3px rgba(0,0,0,0.3);
+      --shadow-hover: 0 4px 6px rgba(0,0,0,0.4);
+      --panel-bg: #1e293b;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      background: var(--card-bg);
+    }
+    .header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .hdr-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: inherit;
+    }
+    .stats-bar {
+      padding: 8px 24px;
+      display: flex;
+      gap: 20px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+    .stat { display: flex; align-items: center; gap: 5px; }
+    .stat-value { font-weight: 600; color: var(--text); }
+    .main { display: flex; flex: 1; overflow: hidden; }
+    .cards-panel { flex: 1; overflow-y: auto; padding: 16px 20px; min-width: 200px; }
+    .resize-handle {
+      width: 5px; cursor: col-resize; background: transparent; flex-shrink: 0;
+      position: relative; z-index: 10; display: none;
+    }
+    .resize-handle:hover, .resize-handle.dragging { background: var(--accent); opacity: 0.4; }
+    .resize-handle.visible { display: block; }
+    .detail-panel {
+      width: 0; overflow: hidden; border-left: 1px solid var(--border);
+      background: var(--panel-bg); transition: width 0.2s ease; flex-shrink: 0;
+      display: flex; flex-direction: column; min-width: 0;
+    }
+    .detail-panel.open { width: 520px; min-width: 300px; max-width: 80vw; }
+    .detail-panel.resizing { transition: none; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px; box-shadow: var(--shadow);
+      transition: box-shadow 0.15s ease, border-color 0.15s ease; cursor: pointer;
+    }
+    .card:hover { box-shadow: var(--shadow-hover); }
+    .card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+    .project-name { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+    .status-badge {
+      font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: 10px;
+      text-transform: uppercase; letter-spacing: 0.03em; flex-shrink: 0;
+    }
+    .status-active { background: #d1fae5; color: #065f46; }
+    [data-theme="dark"] .status-active { background: #064e3b; color: #6ee7b7; }
+    .status-idle { background: #fef3c7; color: #92400e; }
+    [data-theme="dark"] .status-idle { background: #78350f; color: #fcd34d; }
+    .card-meta { font-size: 11px; color: var(--text-secondary); display: flex; gap: 12px; flex-wrap: wrap; }
+    .card-meta span { white-space: nowrap; }
+    .card-badges { margin-top: 8px; display: flex; gap: 5px; flex-wrap: wrap; }
+    .badge {
+      font-size: 9px; padding: 2px 6px; border-radius: 4px;
+      background: var(--border); color: var(--text-secondary);
+    }
+    .badge-board { background: #dbeafe; color: #1e40af; }
+    [data-theme="dark"] .badge-board { background: #1e3a5f; color: #93c5fd; }
+    .context-bar { margin-top: 10px; }
+    .context-header { display: flex; justify-content: space-between; margin-bottom: 3px; }
+    .context-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+    .context-value { font-size: 10px; font-weight: 600; color: var(--text); }
+    .context-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .context-fill { height: 100%; border-radius: 2px; transition: width 0.3s ease; background: #10b981; }
+    .context-fill.warn { background: #f59e0b; }
+    .context-fill.crit { background: #ef4444; }
+
+    .detail-header {
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+    }
+    .detail-header h2 { font-size: 15px; font-weight: 600; }
+    .detail-close {
+      background: none; border: none; color: var(--text-secondary);
+      cursor: pointer; font-size: 18px; font-family: inherit; padding: 4px 8px;
+    }
+    .detail-close:hover { color: var(--text); }
+    .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .tab {
+      padding: 10px 16px; font-size: 12px; font-family: inherit;
+      background: none; border: none; border-bottom: 2px solid transparent;
+      color: var(--text-secondary); cursor: pointer;
+    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-content { flex: 1; overflow-y: auto; padding: 16px 20px; }
+    .info-section { margin-bottom: 20px; }
+    .info-section-title {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;
+    }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .info-item { display: flex; flex-direction: column; gap: 1px; }
+    .info-label { font-size: 10px; color: var(--text-secondary); }
+    .info-value { font-size: 12px; font-weight: 500; word-break: break-all; }
+    .info-mono { font-size: 11px; color: var(--text-secondary); line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+    .kanban { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; }
+    .kanban-col { min-width: 200px; flex: 1; }
+    .kanban-col-title {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;
+      display: flex; justify-content: space-between;
+    }
+    .kanban-count { font-weight: 400; }
+    .kanban-card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; font-size: 11px; line-height: 1.4;
+    }
+    .kanban-card-title { font-weight: 500; margin-bottom: 4px; }
+    .kanban-card-meta { font-size: 9px; color: var(--text-secondary); display: flex; gap: 6px; }
+    .tag-badge { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 500; }
+    .tag-feature { background: #dbeafe; color: #1e40af; }
+    .tag-bug { background: #fee2e2; color: #991b1b; }
+    .tag-chore { background: #e2e8f0; color: #475569; }
+    .tag-design { background: #fae8ff; color: #86198f; }
+    .tag-docs { background: #d1fae5; color: #065f46; }
+    .tag-test { background: #fef3c7; color: #92400e; }
+    [data-theme="dark"] .tag-feature { background: #1e3a5f; color: #93c5fd; }
+    [data-theme="dark"] .tag-bug { background: #5f1d1d; color: #fca5a5; }
+    [data-theme="dark"] .tag-chore { background: #334155; color: #94a3b8; }
+    [data-theme="dark"] .tag-design { background: #4a1d6a; color: #e9d5ff; }
+    [data-theme="dark"] .tag-docs { background: #064e3b; color: #6ee7b7; }
+    [data-theme="dark"] .tag-test { background: #78350f; color: #fcd34d; }
+    [data-theme="dark"] .kanban-card { background: var(--card-bg); }
+    .meter-container { margin-top: 10px; display: flex; gap: 10px; }
+    .meter { flex: 1; }
+    .meter-header { display: flex; justify-content: space-between; margin-bottom: 3px; }
+    .meter-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+    .meter-value { font-size: 10px; font-weight: 600; color: var(--text); }
+    .meter-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .meter-fill { height: 100%; border-radius: 2px; transition: width 0.3s ease; }
+    .meter-fill.cpu { background: var(--accent); }
+    .meter-fill.mem { background: #8b5cf6; }
+    .empty-state { text-align: center; padding: 60px 24px; color: var(--text-secondary); }
+    .empty-state h2 { font-size: 16px; margin-bottom: 8px; color: var(--text); }
+
+    /* PIN screen */
+    .pin-screen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; flex-direction: column; gap: 16px;
+    }
+    .pin-screen h2 { font-size: 18px; }
+    .pin-screen input {
+      padding: 10px 16px; border: 1px solid var(--border); border-radius: 8px;
+      font-size: 14px; font-family: inherit; text-align: center;
+      background: var(--card-bg); color: var(--text); width: 200px;
+    }
+    .pin-screen button {
+      padding: 10px 24px; border-radius: 8px; font-size: 13px;
+      font-family: inherit; cursor: pointer; border: none;
+      background: var(--accent); color: #fff;
+    }
+    .pin-error { color: #ef4444; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <!-- PIN Screen (shown if board requires PIN) -->
+  <div class="pin-screen" id="pinScreen" style="display:none;">
+    <h2>Traffic Control</h2>
+    <p style="color:var(--text-secondary); font-size:13px;">This board requires a PIN</p>
+    <input type="password" id="pinInput" placeholder="Enter PIN" />
+    <button onclick="submitPin()">Enter</button>
+    <div class="pin-error" id="pinError"></div>
+  </div>
+
+  <!-- Dashboard (shown after auth) -->
+  <div id="dashboard" style="display:none;">
+    <div class="header">
+      <h1>Traffic Control</h1>
+      <div class="header-right">
+        <span style="font-size:11px; color:var(--text-secondary);">read-only board</span>
+        <button class="hdr-btn" onclick="toggleTheme()">light / dark / system</button>
+      </div>
+    </div>
+    <div class="stats-bar">
+      <div class="stat">Flights: <span class="stat-value" id="totalFlights">0</span></div>
+      <div class="stat">Active: <span class="stat-value" id="activeFlights">0</span></div>
+      <div class="stat">Last update: <span class="stat-value" id="lastUpdate">--</span></div>
+    </div>
+    <div class="main">
+      <div class="cards-panel" id="cardsPanel"></div>
+      <div class="resize-handle" id="resizeHandle"></div>
+      <div class="detail-panel" id="detailPanel">
+        <div class="detail-header">
+          <h2 id="detailTitle">Flight</h2>
+          <button class="detail-close" onclick="closeDetail()">x</button>
+        </div>
+        <div class="tabs" id="detailTabs"></div>
+        <div class="tab-content" id="tabContent"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const boardGuid = window.location.pathname.split('/b/')[1];
+    let flights = [];
+    let selectedId = null;
+    let selectedFlight = null;
+    let activeTab = 'overview';
+    let themeMode = localStorage.getItem('theme') || 'light';
+    let pin = null;
+
+    applyTheme();
+
+    function applyTheme() {
+      if (themeMode === 'system') {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', themeMode);
+      }
+    }
+    function toggleTheme() {
+      const modes = ['light', 'dark', 'system'];
+      themeMode = modes[(modes.indexOf(themeMode) + 1) % modes.length];
+      localStorage.setItem('theme', themeMode);
+      applyTheme();
+    }
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (themeMode === 'system') applyTheme();
+    });
+
+    function el(tag, attrs, ...children) {
+      const node = document.createElement(tag);
+      if (attrs) {
+        for (const [k, v] of Object.entries(attrs)) {
+          if (k === 'className') node.className = v;
+          else if (k === 'onclick') node.addEventListener('click', v);
+          else if (k.startsWith('style_')) node.style[k.slice(6)] = v;
+          else node.setAttribute(k, v);
+        }
+      }
+      for (const child of children) {
+        if (typeof child === 'string') node.appendChild(document.createTextNode(child));
+        else if (child) node.appendChild(child);
+      }
+      return node;
+    }
+
+    function infoItem(label, value) {
+      return el('div', { className: 'info-item' },
+        el('span', { className: 'info-label' }, label),
+        el('span', { className: 'info-value' }, value || '-')
+      );
+    }
+
+    function buildMeter(label, value, cls, widthPct) {
+      return el('div', { className: 'meter' },
+        el('div', { className: 'meter-header' },
+          el('span', { className: 'meter-label' }, label),
+          el('span', { className: 'meter-value' }, value.toFixed(1) + '%')
+        ),
+        el('div', { className: 'meter-bar' },
+          el('div', { className: 'meter-fill ' + cls, style_width: widthPct + '%' })
+        )
+      );
+    }
+
+    // Check board access
+    async function checkBoard() {
+      const headers = {};
+      if (pin) headers['X-Board-Pin'] = pin;
+
+      try {
+        const res = await fetch('/api/boards/' + boardGuid, { headers });
+        const data = await res.json();
+        if (data.requiresPin) {
+          document.getElementById('pinScreen').style.display = 'flex';
+          return false;
+        }
+        if (data.error) {
+          document.body.appendChild(el('div', { className: 'empty-state' },
+            el('h2', null, 'Board not found'),
+            el('p', null, data.error)
+          ));
+          return false;
+        }
+        return true;
+      } catch (e) {
+        document.body.appendChild(el('div', { className: 'empty-state' },
+          el('h2', null, 'Error'),
+          el('p', null, 'Could not connect to server')
+        ));
+        return false;
+      }
+    }
+
+    async function submitPin() {
+      pin = document.getElementById('pinInput').value;
+      const ok = await checkBoard();
+      if (ok) {
+        document.getElementById('pinScreen').style.display = 'none';
+        startPolling();
+      } else {
+        document.getElementById('pinError').textContent = 'Incorrect PIN';
+      }
+    }
+
+    async function fetchFlights() {
+      const headers = {};
+      if (pin) headers['X-Board-Pin'] = pin;
+      try {
+        const res = await fetch('/api/boards/' + boardGuid + '/flights', { headers });
+        if (!res.ok) return;
+        flights = await res.json();
+        // Parse JSON fields
+        for (const f of flights) {
+          try { f._flags = JSON.parse(f.flags || '[]'); } catch { f._flags = []; }
+          try { f._git = f.git_info ? JSON.parse(f.git_info) : null; } catch { f._git = null; }
+          try { f._agentboard = f.agentboard ? JSON.parse(f.agentboard) : null; } catch { f._agentboard = null; }
+          try { f._package = f.package_info ? JSON.parse(f.package_info) : null; } catch { f._package = null; }
+        }
+        render();
+      } catch {}
+    }
+
+    function startPolling() {
+      document.getElementById('dashboard').style.display = 'flex';
+      document.getElementById('dashboard').style.flexDirection = 'column';
+      document.getElementById('dashboard').style.flex = '1';
+      fetchFlights();
+      setInterval(fetchFlights, 3000);
+    }
+
+    function buildCard(f) {
+      const isSelected = selectedId === f.id;
+      const card = el('div', {
+        className: 'card' + (isSelected ? ' selected' : ''),
+        onclick: () => selectFlight(f)
+      },
+        el('div', { className: 'card-header' },
+          el('span', { className: 'project-name' }, f.project_short),
+          el('span', { className: 'status-badge status-' + f.status }, f.status)
+        ),
+        el('div', { className: 'card-meta' },
+          el('span', null, 'PID ' + f.pid),
+          el('span', null, f.uptime),
+          el('span', null, 'CPU ' + (f.cpu || 0).toFixed(1) + '%'),
+          el('span', null, 'MEM ' + (f.mem || 0).toFixed(1) + '%')
+        )
+      );
+
+      const badges = el('div', { className: 'card-badges' });
+      for (const flag of (f._flags || [])) {
+        badges.appendChild(el('span', { className: 'badge' }, flag));
+      }
+      if (f.has_agentboard) badges.appendChild(el('span', { className: 'badge badge-board' }, 'agentboard'));
+      if (f.has_git) badges.appendChild(el('span', { className: 'badge' }, 'git'));
+      if (badges.childNodes.length > 0) card.appendChild(badges);
+
+      if (f.context_percent != null) {
+        const pct = Math.min(f.context_percent, 100);
+        const fillClass = pct >= 80 ? 'crit' : pct >= 50 ? 'warn' : '';
+        const tokens = f.context_tokens >= 1000 ? Math.round(f.context_tokens / 1000) + 'k' : f.context_tokens;
+        card.appendChild(el('div', { className: 'context-bar' },
+          el('div', { className: 'context-header' },
+            el('span', { className: 'context-label' }, 'Context'),
+            el('span', { className: 'context-value' }, tokens + ' / 200k (' + pct + '%)')
+          ),
+          el('div', { className: 'context-track' },
+            el('div', { className: 'context-fill ' + fillClass, style_width: pct + '%' })
+          )
+        ));
+      }
+
+      return card;
+    }
+
+    function render() {
+      const active = flights.filter(f => f.status === 'active').length;
+      document.getElementById('totalFlights').textContent = flights.length;
+      document.getElementById('activeFlights').textContent = active;
+      document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+
+      const panel = document.getElementById('cardsPanel');
+      if (flights.length === 0) {
+        panel.textContent = '';
+        panel.appendChild(el('div', { className: 'empty-state' },
+          el('h2', null, 'No flights shared yet'),
+          el('p', null, 'Flights will appear here when shared from a local dashboard')
+        ));
+        return;
+      }
+
+      const grid = el('div', { className: 'grid' });
+      for (const f of flights) grid.appendChild(buildCard(f));
+      panel.textContent = '';
+      panel.appendChild(grid);
+
+      if (selectedId && !flights.find(f => f.id === selectedId)) closeDetail();
+    }
+
+    function selectFlight(f) {
+      if (selectedId === f.id) { closeDetail(); return; }
+      selectedId = f.id;
+      selectedFlight = f;
+      activeTab = 'overview';
+
+      document.getElementById('detailPanel').classList.add('open');
+      document.getElementById('resizeHandle').classList.add('visible');
+      document.getElementById('detailTitle').textContent = f.project_short;
+      renderTabs(f);
+      renderTabContent(f);
+      render();
+    }
+
+    function closeDetail() {
+      selectedId = null;
+      selectedFlight = null;
+      document.getElementById('detailPanel').classList.remove('open', 'resizing');
+      document.getElementById('detailPanel').style.width = '';
+      document.getElementById('resizeHandle').classList.remove('visible');
+      render();
+    }
+
+    function renderTabs(f) {
+      const tabsDef = [{ id: 'overview', label: 'Overview' }];
+      if (f._git) tabsDef.push({ id: 'git', label: 'Git' });
+      if (f._agentboard) tabsDef.push({ id: 'board', label: 'Agentboard' });
+      if (f._package) tabsDef.push({ id: 'package', label: 'Package' });
+      if (f.claude_md) tabsDef.push({ id: 'claude', label: 'CLAUDE.md' });
+
+      const tabsEl = document.getElementById('detailTabs');
+      tabsEl.textContent = '';
+      for (const t of tabsDef) {
+        tabsEl.appendChild(el('button', {
+          className: 'tab' + (activeTab === t.id ? ' active' : ''),
+          onclick: () => { activeTab = t.id; renderTabs(f); renderTabContent(f); }
+        }, t.label));
+      }
+    }
+
+    function renderTabContent(f) {
+      const container = document.getElementById('tabContent');
+      container.textContent = '';
+
+      // Refresh from latest data
+      const current = flights.find(x => x.id === f.id) || f;
+
+      if (activeTab === 'overview') {
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'Process'),
+          el('div', { className: 'info-grid' },
+            infoItem('PID', String(current.pid)),
+            infoItem('Uptime', current.uptime),
+            infoItem('Status', current.status),
+            infoItem('Flags', (current._flags || []).join(', ') || 'none')
+          )
+        ));
+        const meters = el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'Resources')
+        );
+        meters.appendChild(el('div', { className: 'meter-container' },
+          buildMeter('CPU', current.cpu || 0, 'cpu', Math.min(current.cpu || 0, 100)),
+          buildMeter('MEM', current.mem || 0, 'mem', Math.min((current.mem || 0) * 10, 100))
+        ));
+        container.appendChild(meters);
+
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'Project Path'),
+          el('div', { className: 'info-value' }, current.project)
+        ));
+
+        if (current._git) {
+          container.appendChild(el('div', { className: 'info-section' },
+            el('div', { className: 'info-section-title' }, 'Git'),
+            el('div', { className: 'info-grid' },
+              infoItem('Branch', current._git.branch),
+              infoItem('Dirty', current._git.dirty ? current._git.changedFiles + ' files' : 'clean')
+            )
+          ));
+        }
+
+        if (current._agentboard) {
+          const tasks = current._agentboard.tasks || [];
+          const cols = {};
+          for (const t of tasks) cols[t.column] = (cols[t.column] || 0) + 1;
+          const summary = Object.entries(cols).map(([k,v]) => k + ': ' + v).join(', ');
+          container.appendChild(el('div', { className: 'info-section' },
+            el('div', { className: 'info-section-title' }, 'Agentboard'),
+            el('div', { className: 'info-value' }, tasks.length + ' tasks (' + summary + ')')
+          ));
+        }
+      } else if (activeTab === 'git' && current._git) {
+        const g = current._git;
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'Repository'),
+          el('div', { className: 'info-grid' },
+            infoItem('Branch', g.branch),
+            infoItem('Dirty', g.dirty ? g.changedFiles + ' changed files' : 'clean'),
+            infoItem('Remote', g.remoteUrl || 'none')
+          )
+        ));
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'Last Commit'),
+          el('div', { className: 'info-mono' }, g.lastCommit)
+        ));
+      } else if (activeTab === 'board' && current._agentboard) {
+        const board = current._agentboard;
+        const columns = board.columns || ['backlog', 'todo', 'in_progress', 'done'];
+        const tasks = board.tasks || [];
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, (board.project || '') + ' - ' + tasks.length + ' tasks')
+        ));
+        const kanban = el('div', { className: 'kanban' });
+        for (const col of columns) {
+          const colTasks = tasks.filter(t => t.column === col);
+          const colEl = el('div', { className: 'kanban-col' });
+          colEl.appendChild(el('div', { className: 'kanban-col-title' },
+            el('span', null, col.replace(/_/g, ' ')),
+            el('span', { className: 'kanban-count' }, String(colTasks.length))
+          ));
+          const showTasks = col === 'done' ? colTasks.slice(-8) : colTasks;
+          if (col === 'done' && colTasks.length > 8) {
+            colEl.appendChild(el('div', {
+              className: 'kanban-card',
+              style_textAlign: 'center', style_color: 'var(--text-secondary)', style_fontSize: '10px'
+            }, '... ' + (colTasks.length - 8) + ' more done tasks'));
+          }
+          for (const t of showTasks) {
+            const card = el('div', { className: 'kanban-card' },
+              el('div', { className: 'kanban-card-title' }, t.title)
+            );
+            const meta = el('div', { className: 'kanban-card-meta' });
+            if (t.tag) meta.appendChild(el('span', { className: 'tag-badge tag-' + t.tag }, t.tag));
+            if (t.priority) meta.appendChild(el('span', null, t.priority));
+            card.appendChild(meta);
+            colEl.appendChild(card);
+          }
+          kanban.appendChild(colEl);
+        }
+        container.appendChild(kanban);
+      } else if (activeTab === 'package' && current._package) {
+        const p = current._package;
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'Package'),
+          el('div', { className: 'info-grid' },
+            infoItem('Name', p.name || '-'),
+            infoItem('Version', p.version || '-'),
+            infoItem('Dependencies', String(p.dependencies)),
+            infoItem('Dev Dependencies', String(p.devDependencies))
+          )
+        ));
+        if (p.description) {
+          container.appendChild(el('div', { className: 'info-section' },
+            el('div', { className: 'info-section-title' }, 'Description'),
+            el('div', { className: 'info-mono' }, p.description)
+          ));
+        }
+        if (p.scripts && p.scripts.length > 0) {
+          container.appendChild(el('div', { className: 'info-section' },
+            el('div', { className: 'info-section-title' }, 'Scripts'),
+            el('div', { className: 'info-mono' }, p.scripts.join(', '))
+          ));
+        }
+      } else if (activeTab === 'claude' && current.claude_md) {
+        container.appendChild(el('div', { className: 'info-section' },
+          el('div', { className: 'info-section-title' }, 'CLAUDE.md'),
+          el('div', { className: 'info-mono' }, current.claude_md)
+        ));
+      }
+    }
+
+    // Resize handle
+    (function() {
+      const handle = document.getElementById('resizeHandle');
+      const detail = document.getElementById('detailPanel');
+      const main = document.querySelector('.main');
+      let dragging = false;
+
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        dragging = true;
+        detail.classList.add('resizing');
+        handle.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const mainRect = main.getBoundingClientRect();
+        const newWidth = mainRect.right - e.clientX;
+        const clamped = Math.max(300, Math.min(newWidth, mainRect.width * 0.8));
+        detail.style.width = clamped + 'px';
+      });
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        handle.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      });
+    })();
+
+    // Init
+    (async function() {
+      const ok = await checkBoard();
+      if (ok) startPolling();
+    })();
+  </script>
+</body>
+</html>
