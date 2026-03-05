@@ -1,8 +1,11 @@
 {
   "name": "trafficcontrol",
-  "module": "index.ts",
+  "description": "Real-time dashboard for monitoring Claude CLI sessions",
+  "module": "server.ts",
   "type": "module",
-  "private": true,
+  "scripts": {
+    "start": "bun run server.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
