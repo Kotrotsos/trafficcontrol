@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traffic Control</title>
+  <style>
+    :root {
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --text: #1a1a2e;
+      --text-secondary: #6c757d;
+      --border: #e2e8f0;
+      --active: #10b981;
+      --idle: #f59e0b;
+      --accent: #3b82f6;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-hover: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
+    }
+
+    [data-theme="dark"] {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --border: #334155;
+      --shadow: 0 1px 3px rgba(0,0,0,0.3);
+      --shadow-hover: 0 4px 6px rgba(0,0,0,0.4);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .header {
+      padding: 24px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      background: var(--card-bg);
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .connection-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+    }
+
+    .connection-dot.connected {
+      background: var(--active);
+    }
+
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+
+    .stats-bar {
+      padding: 12px 32px;
+      display: flex;
+      gap: 24px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .stat-value {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 16px;
+      padding: 24px 32px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      transition: box-shadow 0.15s ease, transform 0.15s ease;
+    }
+
+    .card:hover {
+      box-shadow: var(--shadow-hover);
+      transform: translateY(-1px);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+
+    .project-name {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      word-break: break-all;
+    }
+
+    .status-badge {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      flex-shrink: 0;
+    }
+
+    .status-active {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    [data-theme="dark"] .status-active {
+      background: #064e3b;
+      color: #6ee7b7;
+    }
+
+    .status-idle {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    [data-theme="dark"] .status-idle {
+      background: #78350f;
+      color: #fcd34d;
+    }
+
+    .card-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .detail {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .detail-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+    }
+
+    .detail-value {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .meter-container {
+      margin-top: 14px;
+      display: flex;
+      gap: 12px;
+    }
+
+    .meter {
+      flex: 1;
+    }
+
+    .meter-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .meter-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+    }
+
+    .meter-value {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .meter-bar {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .meter-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+
+    .meter-fill.cpu {
+      background: var(--accent);
+    }
+
+    .meter-fill.mem {
+      background: #8b5cf6;
+    }
+
+    .flags {
+      margin-top: 12px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .flag {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--border);
+      color: var(--text-secondary);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 80px 32px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state h2 {
+      font-size: 16px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .card-path {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 14px;
+      word-break: break-all;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Traffic Control</h1>
+    <div class="header-right">
+      <div class="connection-status">
+        <div class="connection-dot" id="connDot"></div>
+        <span id="connText">Connecting...</span>
+      </div>
+      <button class="theme-toggle" onclick="toggleTheme()">light / dark / system</button>
+    </div>
+  </div>
+  <div class="stats-bar" id="statsBar">
+    <div class="stat">Sessions: <span class="stat-value" id="totalSessions">0</span></div>
+    <div class="stat">Active: <span class="stat-value" id="activeSessions">0</span></div>
+    <div class="stat">Total CPU: <span class="stat-value" id="totalCpu">0%</span></div>
+    <div class="stat">Total MEM: <span class="stat-value" id="totalMem">0%</span></div>
+    <div class="stat">Last update: <span class="stat-value" id="lastUpdate">--</span></div>
+  </div>
+  <div id="content"></div>
+
+  <script>
+    let sessions = [];
+    let ws;
+    let themeMode = localStorage.getItem('theme') || 'light';
+    applyTheme();
+    renderEmpty('Connecting to Traffic Control...', 'Waiting for WebSocket connection');
+
+    function applyTheme() {
+      if (themeMode === 'system') {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', themeMode);
+      }
+    }
+
+    function toggleTheme() {
+      const modes = ['light', 'dark', 'system'];
+      const idx = modes.indexOf(themeMode);
+      themeMode = modes[(idx + 1) % modes.length];
+      localStorage.setItem('theme', themeMode);
+      applyTheme();
+    }
+
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (themeMode === 'system') applyTheme();
+    });
+
+    function connect() {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${location.host}/ws`);
+
+      ws.onopen = () => {
+        document.getElementById('connDot').classList.add('connected');
+        document.getElementById('connText').textContent = 'Connected';
+      };
+
+      ws.onclose = () => {
+        document.getElementById('connDot').classList.remove('connected');
+        document.getElementById('connText').textContent = 'Reconnecting...';
+        setTimeout(connect, 2000);
+      };
+
+      ws.onerror = () => ws.close();
+
+      ws.onmessage = (event) => {
+        sessions = JSON.parse(event.data);
+        render();
+      };
+    }
+
+    function el(tag, attrs, ...children) {
+      const node = document.createElement(tag);
+      if (attrs) {
+        for (const [k, v] of Object.entries(attrs)) {
+          if (k === 'className') node.className = v;
+          else if (k.startsWith('style_')) node.style[k.slice(6)] = v;
+          else node.setAttribute(k, v);
+        }
+      }
+      for (const child of children) {
+        if (typeof child === 'string') node.appendChild(document.createTextNode(child));
+        else if (child) node.appendChild(child);
+      }
+      return node;
+    }
+
+    function renderEmpty(title, subtitle) {
+      const content = document.getElementById('content');
+      content.textContent = '';
+      content.appendChild(
+        el('div', { className: 'empty-state' },
+          el('h2', null, title),
+          el('p', null, subtitle)
+        )
+      );
+    }
+
+    function buildCard(s) {
+      const header = el('div', { className: 'card-header' },
+        el('span', { className: 'project-name' }, s.projectShort),
+        el('span', { className: `status-badge status-${s.status}` }, s.status)
+      );
+
+      const path = el('div', { className: 'card-path' }, s.project);
+
+      const details = el('div', { className: 'card-details' },
+        el('div', { className: 'detail' },
+          el('span', { className: 'detail-label' }, 'PID'),
+          el('span', { className: 'detail-value' }, String(s.pid))
+        ),
+        el('div', { className: 'detail' },
+          el('span', { className: 'detail-label' }, 'TTY'),
+          el('span', { className: 'detail-value' }, s.tty)
+        ),
+        el('div', { className: 'detail' },
+          el('span', { className: 'detail-label' }, 'STARTED'),
+          el('span', { className: 'detail-value' }, s.startTime)
+        ),
+        el('div', { className: 'detail' },
+          el('span', { className: 'detail-label' }, 'UPTIME'),
+          el('span', { className: 'detail-value' }, s.uptime)
+        )
+      );
+
+      const cpuWidth = Math.min(s.cpu, 100) + '%';
+      const memWidth = Math.min(s.mem * 10, 100) + '%';
+
+      const meters = el('div', { className: 'meter-container' },
+        el('div', { className: 'meter' },
+          el('div', { className: 'meter-header' },
+            el('span', { className: 'meter-label' }, 'CPU'),
+            el('span', { className: 'meter-value' }, s.cpu.toFixed(1) + '%')
+          ),
+          el('div', { className: 'meter-bar' },
+            el('div', { className: 'meter-fill cpu', style_width: cpuWidth })
+          )
+        ),
+        el('div', { className: 'meter' },
+          el('div', { className: 'meter-header' },
+            el('span', { className: 'meter-label' }, 'MEM'),
+            el('span', { className: 'meter-value' }, s.mem.toFixed(1) + '%')
+          ),
+          el('div', { className: 'meter-bar' },
+            el('div', { className: 'meter-fill mem', style_width: memWidth })
+          )
+        )
+      );
+
+      const card = el('div', { className: 'card' }, header, path, details, meters);
+
+      if (s.flags && s.flags.length > 0) {
+        const flagsContainer = el('div', { className: 'flags' });
+        for (const f of s.flags) {
+          flagsContainer.appendChild(el('span', { className: 'flag' }, f));
+        }
+        card.appendChild(flagsContainer);
+      }
+
+      return card;
+    }
+
+    function render() {
+      const totalCpu = sessions.reduce((a, s) => a + s.cpu, 0);
+      const totalMem = sessions.reduce((a, s) => a + s.mem, 0);
+      const active = sessions.filter(s => s.status === 'active').length;
+
+      document.getElementById('totalSessions').textContent = sessions.length;
+      document.getElementById('activeSessions').textContent = active;
+      document.getElementById('totalCpu').textContent = totalCpu.toFixed(1) + '%';
+      document.getElementById('totalMem').textContent = totalMem.toFixed(1) + '%';
+      document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+
+      const content = document.getElementById('content');
+
+      if (sessions.length === 0) {
+        renderEmpty('No Claude sessions running', 'Start a Claude CLI session to see it here');
+        return;
+      }
+
+      const sorted = [...sessions].sort((a, b) => {
+        if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
+        return b.cpu - a.cpu;
+      });
+
+      const grid = el('div', { className: 'grid' });
+      for (const s of sorted) {
+        grid.appendChild(buildCard(s));
+      }
+
+      content.textContent = '';
+      content.appendChild(grid);
+    }
+
+    connect();
+  </script>
+</body>
+</html>
