@@ -201,6 +201,105 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+interface ConversationEntry {
+  role: "assistant" | "human" | "tool_result";
+  type: "text" | "tool_use" | "tool_result";
+  content?: string;
+  toolName?: string;
+  toolInput?: string;
+  toolId?: string;
+  timestamp?: string;
+}
+
+async function getRecentConversation(projectPath: string): Promise<ConversationEntry[]> {
+  const sanitized = projectPath.replace(/\//g, "-");
+  const projDir = join(CLAUDE_DIR, "projects", sanitized);
+  const files = await readdir(projDir);
+  const jsonlFiles = files.filter(f => f.endsWith(".jsonl"));
+  if (jsonlFiles.length === 0) return [];
+
+  let newest = { name: "", mtime: 0 };
+  for (const f of jsonlFiles) {
+    try {
+      const s = await stat(join(projDir, f));
+      if (s.mtimeMs > newest.mtime) newest = { name: f, mtime: s.mtimeMs };
+    } catch {}
+  }
+  if (!newest.name) return [];
+
+  const filePath = join(projDir, newest.name);
+  const fileHandle = Bun.file(filePath);
+  const size = fileHandle.size;
+  // Read last 128KB for enough conversation context
+  const readSize = Math.min(size, 131072);
+  const slice = fileHandle.slice(size - readSize, size);
+  const tail = await slice.text();
+  const lines = tail.split("\n").filter(Boolean);
+
+  const entries: ConversationEntry[] = [];
+
+  for (const line of lines) {
+    try {
+      const obj = JSON.parse(line);
+
+      if (obj.type === "assistant" && obj.message?.content) {
+        const ts = obj.message?.created_at || obj.timestamp;
+        for (const block of obj.message.content) {
+          if (block.type === "text" && block.text) {
+            entries.push({
+              role: "assistant",
+              type: "text",
+              content: block.text.slice(0, 1000),
+              timestamp: ts,
+            });
+          } else if (block.type === "tool_use") {
+            const input = typeof block.input === "string"
+              ? block.input.slice(0, 300)
+              : JSON.stringify(block.input || {}).slice(0, 300);
+            entries.push({
+              role: "assistant",
+              type: "tool_use",
+              toolName: block.name,
+              toolInput: input,
+              toolId: block.id,
+              timestamp: ts,
+            });
+          }
+        }
+      } else if (obj.type === "tool_result" || (obj.type === "user" && obj.message?.content)) {
+        // tool_result entries or user messages that contain tool results
+        const content = obj.message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === "tool_result") {
+              const resultText = typeof block.content === "string"
+                ? block.content
+                : Array.isArray(block.content)
+                  ? block.content.map((c: any) => c.text || "").join("").slice(0, 500)
+                  : JSON.stringify(block.content || "").slice(0, 500);
+              entries.push({
+                role: "tool_result",
+                type: "tool_result",
+                content: resultText.slice(0, 500),
+                toolId: block.tool_use_id,
+              });
+            } else if (block.type === "text" && typeof block.text === "string") {
+              entries.push({
+                role: "human",
+                type: "text",
+                content: block.text.slice(0, 500),
+              });
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // Return last 50 entries
+  return entries.slice(-50);
+}
+
 export async function getProjectDetail(projectPath: string) {
   const detail: Record<string, any> = { project: projectPath };
 
@@ -265,6 +364,11 @@ export async function getProjectDetail(projectPath: string) {
     const files = await readdir(projDir);
     const sessionFiles = files.filter(f => f.endsWith(".jsonl"));
     detail.sessionCount = sessionFiles.length;
+  } catch {}
+
+  // Recent conversation messages
+  try {
+    detail.conversation = await getRecentConversation(projectPath);
   } catch {}
 
   return detail;

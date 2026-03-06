@@ -291,6 +291,33 @@
     .toast.show { opacity: 1; }
     .toast.error { border-color: #ef4444; }
     .board-url { font-size: 11px; color: var(--accent); word-break: break-all; }
+
+    /* Conversation tab */
+    .conv-entry { margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; font-size: 11px; line-height: 1.5; }
+    .conv-assistant-text { background: #EEF2FF; border: 1px solid #C7D2FE; }
+    [data-theme="dark"] .conv-assistant-text { background: #1e1b4b; border-color: #312e81; }
+    .conv-tool-use { background: #FFF7ED; border: 1px solid #FED7AA; }
+    [data-theme="dark"] .conv-tool-use { background: #431407; border-color: #7c2d12; }
+    .conv-tool-result { background: #F0FDF4; border: 1px solid #BBF7D0; }
+    [data-theme="dark"] .conv-tool-result { background: #052e16; border-color: #166534; }
+    .conv-human { background: var(--bg); border: 1px solid var(--border); }
+    .conv-role {
+      font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+      margin-bottom: 4px; display: flex; align-items: center; gap: 6px;
+    }
+    .conv-role-assistant { color: #4338CA; }
+    [data-theme="dark"] .conv-role-assistant { color: #A5B4FC; }
+    .conv-role-tool { color: #C2410C; }
+    [data-theme="dark"] .conv-role-tool { color: #FDBA74; }
+    .conv-role-result { color: #15803D; }
+    [data-theme="dark"] .conv-role-result { color: #86EFAC; }
+    .conv-role-human { color: var(--text-secondary); }
+    .conv-tool-name {
+      font-size: 10px; font-weight: 600; color: var(--text); background: var(--card-bg);
+      padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border);
+    }
+    .conv-content { white-space: pre-wrap; word-break: break-word; color: var(--text); }
+    .conv-input { font-size: 10px; color: var(--text-secondary); white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
     .share-result { margin-top: 12px; padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
     .share-result-label { font-size: 10px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 6px; letter-spacing: 0.05em; }
     .share-result-url {
@@ -634,6 +661,7 @@
       if (s.hasAgentboard || (detailData && detailData.agentboard)) tabsDef.push({ id: 'board', label: 'Agentboard' });
       if (detailData && detailData.package) tabsDef.push({ id: 'package', label: 'Package' });
       if (detailData && (detailData.claudeMd || detailData.projectClaudeMd)) tabsDef.push({ id: 'claude', label: 'CLAUDE.md' });
+      if (detailData && detailData.conversation && detailData.conversation.length > 0) tabsDef.push({ id: 'conversation', label: 'Conversation' });
 
       const tabsEl = document.getElementById('detailTabs');
       tabsEl.textContent = '';
@@ -661,6 +689,8 @@
         renderPackage(container);
       } else if (activeTab === 'claude') {
         renderClaudeMd(container);
+      } else if (activeTab === 'conversation') {
+        renderConversation(container);
       }
     }
 
@@ -852,6 +882,49 @@
           el('div', { className: 'info-section-title' }, '.claude/projects CLAUDE.md'),
           el('div', { className: 'info-mono' }, detailData.projectClaudeMd)
         ));
+      }
+    }
+
+    function renderConversation(container) {
+      if (!detailData || !detailData.conversation) return;
+      const entries = detailData.conversation;
+
+      container.appendChild(el('div', { className: 'info-section' },
+        el('div', { className: 'info-section-title' }, 'Recent Activity (' + entries.length + ' entries)')
+      ));
+
+      // Render in reverse (newest first)
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const e = entries[i];
+        let entryEl;
+
+        if (e.type === 'text' && e.role === 'assistant') {
+          entryEl = el('div', { className: 'conv-entry conv-assistant-text' },
+            el('div', { className: 'conv-role conv-role-assistant' }, 'Assistant'),
+            el('div', { className: 'conv-content' }, e.content || '')
+          );
+        } else if (e.type === 'tool_use') {
+          entryEl = el('div', { className: 'conv-entry conv-tool-use' },
+            el('div', { className: 'conv-role conv-role-tool' },
+              'Tool Call ',
+              el('span', { className: 'conv-tool-name' }, e.toolName || 'unknown')
+            ),
+            el('div', { className: 'conv-input' }, e.toolInput || '')
+          );
+        } else if (e.type === 'tool_result') {
+          const preview = (e.content || '').slice(0, 300);
+          entryEl = el('div', { className: 'conv-entry conv-tool-result' },
+            el('div', { className: 'conv-role conv-role-result' }, 'Tool Result'),
+            el('div', { className: 'conv-content' }, preview + (e.content && e.content.length > 300 ? '...' : ''))
+          );
+        } else if (e.role === 'human') {
+          entryEl = el('div', { className: 'conv-entry conv-human' },
+            el('div', { className: 'conv-role conv-role-human' }, 'Human'),
+            el('div', { className: 'conv-content' }, e.content || '')
+          );
+        }
+
+        if (entryEl) container.appendChild(entryEl);
       }
     }
 
